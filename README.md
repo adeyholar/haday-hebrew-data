@@ -32,6 +32,8 @@ python -m unittest discover -s tests
 
 `dist/` holds `hebrew-bible.sqlite`, one JSON file per chapter, the accent table, and the build reports. The reports are the review queue: accent unknowns, rhythm mismatches, stress defaults, and UXLC differences. OSHB is never overwritten to match UXLC.
 
+A release tar includes this README and `LICENSE-DATA.md` next to the data. The database is a separate `.sqlite.gz`. Do not publish a tag whose builder commit is behind `main`.
+
 ## Attribution
 
 Hebrew text: Westminster Leningrad Codex (public domain), as encoded by the Open Scriptures Hebrew Bible. Lemma and morphology: "Original work of the Open Scriptures Hebrew Bible available at https://github.com/openscriptures/morphhb", licensed CC BY 4.0. Text cross-checked against the Unicode/XML Leningrad Codex: UXLC 2.6 (27.7), Tanach.us Inc., West Redding, CT, USA, Oct 2026.

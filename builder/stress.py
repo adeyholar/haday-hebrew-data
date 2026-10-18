@@ -61,9 +61,52 @@ def _nuclei(surface: str) -> list[int]:
     return found
 
 
+def _shewa_only(surface: str, index: int) -> bool:
+    groups = clusters(surface)
+    if index < 0 or index >= len(groups):
+        return False
+    cps = _marks(groups[index][1])
+    return bool(cps & SHEVA) and not (cps & FULL)
+
+
+def _quiescent_aleph(surface: str, index: int) -> bool:
+    """A silent aleph is not its own syllable. וֹ and וּ owned by the aleph are not this case."""
+    groups = clusters(surface)
+    if index < 0 or index >= len(groups) or groups[index][0] != "א":
+        return False
+    if index in _nuclei(surface):
+        return False
+    return not (_marks(groups[index][1]) & FULL)
+
+
+def _prepositive_blocks(accents: list[dict], index: int) -> bool:
+    """Dechi, telisha gedola, and geresh muqdam are written early. They are not the tone."""
+    return any(
+        row.get("placement") == "pre" and row.get("letter_index") == index and row.get("name") != "yetiv"
+        for row in accents
+    )
+
+
+def _prefer_tone(surface: str, index: int, accents: list[dict]) -> int:
+    nuclei = _nuclei(surface)
+    if _prepositive_blocks(accents, index) and any(n > index for n in nuclei):
+        return nuclei[-1]
+    if _quiescent_aleph(surface, index):
+        earlier = [n for n in nuclei if n < index]
+        if earlier:
+            return earlier[-1]
+    return index
+
+
 def syll_from_end(surface: str, letter_index: int) -> int:
     after = sum(1 for n in _nuclei(surface) if n > letter_index)
     return 1 + after
+
+
+def _pack(surface: str, index: int, accents: list[dict], source: str) -> dict:
+    chosen = _prefer_tone(surface, index, accents)
+    used = source if chosen == index else "default-ultima"
+    return {"letter_index": chosen, "syll_from_end": syll_from_end(surface, chosen), "source": used}
 
 
 def stress_for(surface: str, accents: list[dict], meteg: list[dict], proclitic: bool) -> dict | None:
@@ -79,8 +122,7 @@ def stress_for(surface: str, accents: list[dict], meteg: list[dict], proclitic: 
     if main and main["name"] == "pashta":
         pashtas = [row for row in accents if row["name"] == "pashta"]
         if len(pashtas) >= 2:
-            index = pashtas[0]["letter_index"]
-            return {"letter_index": index, "syll_from_end": syll_from_end(surface, index), "source": "doubled"}
+            return _pack(surface, pashtas[0]["letter_index"], accents, "doubled")
         # OSHB writes the repeated pashta as qadma on the stress and pashta on the last letter.
         earlier = next(
             (
@@ -91,30 +133,33 @@ def stress_for(surface: str, accents: list[dict], meteg: list[dict], proclitic: 
             None,
         )
         if earlier:
-            index = earlier["letter_index"]
-            return {"letter_index": index, "syll_from_end": syll_from_end(surface, index), "source": "doubled"}
+            return _pack(surface, earlier["letter_index"], accents, "doubled")
 
     if main and main["name"] == "silluq":
-        index = main["letter_index"]
-        return {"letter_index": index, "syll_from_end": syll_from_end(surface, index), "source": "silluq"}
+        return _pack(surface, main["letter_index"], accents, "silluq")
 
     if main and main["placement"] == "imp" and main["kind"] == "D":
-        index = main["letter_index"]
-        return {"letter_index": index, "syll_from_end": syll_from_end(surface, index), "source": "accent"}
+        return _pack(surface, main["letter_index"], accents, "accent")
 
     if main and main["kind"] == "C" and main["placement"] == "imp":
-        index = main["letter_index"]
-        return {"letter_index": index, "syll_from_end": syll_from_end(surface, index), "source": "accent"}
+        return _pack(surface, main["letter_index"], accents, "accent")
 
-    # Single prepositive or postpositive: a conjunctive or a meteg in the word, else the ultima.
+    # A prepositive or postpositive mark is not the tone. A conjunctive can be.
+    # A meteg on shewa is not the tone either.
     conjunctive = next((row for row in accents if row["kind"] == "C" and row["placement"] == "imp"), None)
-    if conjunctive:
-        index = conjunctive["letter_index"]
-        return {"letter_index": index, "syll_from_end": syll_from_end(surface, index), "source": "conjunctive"}
-    plain = next((row for row in meteg if row["function"] == "meteg"), None)
+    if conjunctive and not _prepositive_blocks(accents, conjunctive["letter_index"]):
+        return _pack(surface, conjunctive["letter_index"], accents, "conjunctive")
+    plain = next(
+        (
+            row
+            for row in meteg
+            if row["function"] == "meteg" and not _shewa_only(surface, row["letter_index"]) and not _prepositive_blocks(accents, row["letter_index"])
+        ),
+        None,
+    )
     if plain:
-        index = plain["letter_index"]
-        return {"letter_index": index, "syll_from_end": syll_from_end(surface, index), "source": "meteg"}
+        return _pack(surface, plain["letter_index"], accents, "meteg")
     nuclei = _nuclei(surface)
     index = nuclei[-1] if nuclei else last_letter
-    return {"letter_index": index, "syll_from_end": syll_from_end(surface, index), "source": "default-ultima"}
+    return _pack(surface, index, accents, "default-ultima")
+

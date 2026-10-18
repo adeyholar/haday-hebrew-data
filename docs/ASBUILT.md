@@ -6,7 +6,7 @@ Living picture of **what this dataset is today**. Not the class site. Not a wish
 |---|---|
 | **Snapshot** | 18 October 2026, after the Dev Desk review of v1.0.0 |
 | **Repo** | https://github.com/adeyholar/haday-hebrew-data (`main`). Dataset version **1.1.0**. |
-| **Release** | v1.0.0 was the first cut. v1.1.0 is the review fix. The class site is still not wired to either. |
+| **Release** | v1.0.0 was the first cut. v1.1.0 was the first review fix. v1.1.1 is the poetic rhythm, stress, and trailer fix. The class site is still not wired to it. |
 | **Spec** | https://app.notion.com/p/3fd058f607b1816e8bcbde360c1a546d |
 | **Class site** | Not wired. https://hebrewmentor.haday.app still reads `public/tanakh/books/*.json`, which drops the accents. |
 | **BHSA** | Off. Do not turn it on without the license note in the spec. |
@@ -96,19 +96,19 @@ Nine qere words have no ketiv in front of them (OSHB calls them adaptations). Th
 
 ## Rhythm
 
-Prose agrees with OSHB’s `n` on **99.69%** of verses (18,689 / 18,748). That clears the 98% bar. Genesis stays inside that bar. Poetry (Psalms, Proverbs, Job) agrees on **96.1%** (4,291 / 4,465). That clears the 95% bar. The poetic path follows Wickes as recorded in the OSHB accent catalog: the rightmost disjunctive in a domain is the near divider, a stronger one to its left is the remote divider, and a weaker one nests under the near divider. With no atnach, a revia gadol takes number 1 and ole veyored stays 2. With neither, ole veyored takes 1. A merkha after a word that already holds both ole and yored is not a second ole veyored.
+Prose agrees with OSHB’s `n` on **99.69%** of verses (18,689 / 18,748). That clears the 98% bar. Genesis stays inside that bar. Poetry (Psalms, Proverbs, Job) agrees on **96.2%** (4,296 / 4,465). That clears the 95% bar. The poetic path follows Wickes as recorded in the OSHB accent catalog: the rightmost disjunctive in a domain is the near divider, a stronger one to its left is the remote divider, and a weaker one nests under the near divider. With no atnach, a revia gadol takes number 1 and ole veyored stays 2. With neither, ole veyored takes 1. A merkha after a word that already holds both ole and yored is not a second ole veyored.
 
 A ketiv is read from its qere for accents, stress, and the pause tree. The written consonants stay the ketiv. Where they disagree with OSHB, `rhythm_path` stays OSHB’s value. The computed path is `rhythm_path_computed` in SQLite. Every miss is in `build-report/rhythm-mismatch.csv`.
 
-Path numbers: silluq is `0`, atnach is `1`, ole veyored is `2`. A poetic verse with ole and no atnach gives `1` to the strongest king after the ole. A prose verse with no atnach does not.
+Path numbers: silluq is `0`, atnach is `1`, ole veyored is `2` when atnach is there. With no atnach, a revia gadol takes `1` and ole stays `2`. With neither, ole takes `1`. The poetic `verse.rhythm` tree is still the older level split. Use `rhythm_path` and `rhythm_path_computed` for poetry. Do not treat the tree as the same thing.
 
-Prose legarmeh is munach followed by paseq only. Mahpakh or qadma followed by paseq stays conjunctive. Poetry still treats munach, mehuppakh, and azla before paseq as legarmeh, because dropping that made the poetry match worse, not better.
+Prose legarmeh is munach followed by paseq only. Mahpakh or qadma followed by paseq stays conjunctive. Poetry legarmeh is mehuppakh or azla followed by paseq. Poetic munach followed by paseq stays conjunctive. A revia gadol just before ole veyored is `revia_qatan` on both `main_accent` and the accent row.
 
-A verse whose only pause is the final silluq still names silluq as its governor. If the last word has no U+05BD, the silluq row is marked `inferred` and the text is not given a fake meteg.
+A verse with sof pasuq names silluq as its governor. If that last word has no U+05BD, the silluq row is marked `inferred` and the text is not given a fake meteg. A verse with no sof pasuq, such as Numbers 25:19, keeps its real governor. It is not given a silluq.
 
 ## Stress
 
-Holam male (וֹ) and shureq (וּ) belong to the consonant before the vav. אוֹר, טוֹב, תְּהוֹם, and רוּחַ are one syllable from the end when the accent is on that consonant. After that fix, `default-ultima` is 23,263 words. That list is still for Dev Desk. The old 24,363 count was the bug.
+Holam male (וֹ) and shureq (וּ) belong to the consonant before the vav. אוֹר, טוֹב, תְּהוֹם, and רוּחַ are one syllable from the end when the accent is on that consonant. A meteg on shewa is not the tone. A prepositive mark (dechi, telisha gedola, geresh muqdam) is not the tone. Yetiv is, because its tone is the first syllable. A silent aleph is not a syllable of its own.
 
 ## Stress and the other reports
 

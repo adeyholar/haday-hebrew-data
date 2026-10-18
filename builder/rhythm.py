@@ -36,9 +36,10 @@ def division_paths(units: list[dict]) -> dict[int, str]:
     atnach = next((unit for unit in disj if unit["accent"] == "atnach"), None)
     if ole is not None:
         paths[ole["unit"]] = "2"
-    if atnach is not None:
+    # Atnach is 1 only when a silluq stands after it. An atnach that ends the verse is 0.
+    if atnach is not None and atnach is not disj[-1]:
         paths[atnach["unit"]] = "1"
-    elif ole is not None:
+    elif atnach is None and ole is not None:
         # Poetic verse with ole veyored and no atnach: the strongest king on the silluq side takes the "1" half.
         pool = [unit for unit in disj[:-1] if unit["unit"] > ole["unit"]]
         if pool:
@@ -112,13 +113,13 @@ def poetic_paths(units: list[dict]) -> dict[int, str]:
     atnach = next((unit for unit in disj if unit["accent"] == "atnach"), None)
     ole = next((unit for unit in disj if unit["accent"] == "ole_veyored"), None)
     anchors = [disj[-1]]
-    if atnach is not None:
+    if atnach is not None and atnach is not disj[-1]:
         paths[atnach["unit"]] = "1"
         anchors.append(atnach)
         if ole is not None:
             paths[ole["unit"]] = "2"
             anchors.append(ole)
-    else:
+    elif atnach is None:
         # No atnach. A revia gadol stands in for it and keeps number 1, so ole stays 2.
         # With neither, ole itself is the major divider and takes 1.
         ole_at = ole["unit"] if ole is not None else 0
