@@ -2,6 +2,8 @@
 
 Reusable text of the Hebrew Bible for HaDay. Every written mark is kept: vowels, dagesh, shin and sin dots, the te‘amim, meteg, maqaf, paseq, and sof pasuq. A word is not one string. The accents and the rhythm are their own fields.
 
+**As built:** [docs/ASBUILT.md](docs/ASBUILT.md). Read that before changing the builder. It is what this release actually does, including the gaps.
+
 The printed BHS scan is not a source. Nothing in this repository is taken from it.
 
 ## Sources
