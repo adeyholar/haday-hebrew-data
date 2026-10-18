@@ -192,6 +192,46 @@ class Accept(unittest.TestCase):
         self.assertIn(" \u05C0 ", verse["text"])
         word = next(word for word in verse["words"] if PASEQ in word["trailer"])
         self.assertNotIn("legarmeh", [row["name"] for row in word["accents"]])
+        self.assertFalse(any(word.get("trailer") == "  \u05c0 " for book in self.books for verse in book["verses"] for word in verse["words"]))
+
+    def test_no_sof_verse_is_not_given_a_silluq(self):
+        verse = next(item for item in self.books[3]["verses"] if item["ref"] == "Num.25.19")
+        self.assertEqual(verse["has_sof_pasuq"], 0)
+        self.assertEqual(verse["rhythm"].get("governor"), "atnach")
+        last = verse["words"][-1]
+        self.assertEqual(last["rhythm_path_computed"], "0")
+        self.assertTrue(last["rhythm_match"])
+        for word in verse["words"]:
+            self.assertFalse(word.get("silluq_inferred"))
+            self.assertNotIn("silluq", [row["name"] for row in word.get("accents") or []])
+
+    def test_revia_before_ole_is_revia_qatan(self):
+        verse = next(item for item in self.books[26]["verses"] if item["ref"] == "Ps.1.2")
+        word = next(word for word in verse["words"] if word["consonants"] == "יהוה")
+        self.assertEqual(word["main_accent"], "revia_qatan")
+        self.assertIn("revia_qatan", [row["name"] for row in word["accents"]])
+
+    def test_poetic_munach_paseq_is_not_legarmeh(self):
+        found = 0
+        for book in self.books:
+            for verse in book["verses"]:
+                if verse["system"] != "poetic":
+                    continue
+                for word in verse["words"]:
+                    if "\u05c0" not in (word.get("trailer") or ""):
+                        continue
+                    rows = word.get("accents") or []
+                    if not any(row.get("cp") == "U+05A3" for row in rows):
+                        continue
+                    found += 1
+                    self.assertNotIn("legarmeh", [row["name"] for row in rows], word["id"])
+        self.assertGreater(found, 0)
+
+    def test_meteg_on_shewa_is_not_the_tone(self):
+        verse = next(item for item in self.books[4]["verses"] if item["ref"] == "Deut.4.19")
+        word = next(word for word in verse["words"] if word.get("main_accent") == "telisha_gedola")
+        self.assertNotEqual(word["stress"]["letter_index"], 0)
+        self.assertNotEqual(word["stress"]["source"], "meteg")
 
     def test_qere_is_attached_for_the_reader(self):
         verse = next(item for item in self.books[0]["verses"] if item["ref"] == "Gen.8.17")

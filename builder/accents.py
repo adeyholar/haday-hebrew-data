@@ -16,7 +16,7 @@ PROSE: dict[int, tuple[str, str, int | str, str]] = {
     0x059A: ("yetiv", "D", 2, "pre"),
     0x059B: ("tevir", "D", 2, "imp"),
     0x059C: ("geresh", "D", 3, "imp"),
-    0x059D: ("geresh_muqdam", "D", 3, "imp"),
+    0x059D: ("geresh_muqdam", "D", 3, "pre"),
     0x059E: ("gershayim", "D", 3, "imp"),
     0x059F: ("pazer_gadol", "D", 3, "imp"),
     0x05A0: ("telisha_gedola", "D", 3, "pre"),
@@ -43,7 +43,7 @@ POETIC: dict[int, tuple[str, str, int | str, str]] = {
     0x0597: ("revia_gadol", "D", 1, "imp"),
     0x0598: ("tsinnorit", "C", "C", "imp"),
     0x059C: ("geresh", "D", 3, "imp"),
-    0x059D: ("geresh_muqdam", "D", 3, "imp"),
+    0x059D: ("geresh_muqdam", "D", 3, "pre"),
     0x05A1: ("pazer", "D", 2, "imp"),
     0x05A3: ("munach", "C", "C", "imp"),
     0x05A4: ("mehuppakh", "C", "C", "imp"),
@@ -104,8 +104,9 @@ HEBREW = {
     "yored": "יוֹרֵד",
 }
 
-# Prose legarmeh is munach + paseq only. Poetry also promotes mehuppakh and azla before paseq.
-POETIC_LEGARMEH = {0x05A3, 0x05A4, 0x05A8}
+# Prose legarmeh is munach + paseq only. Poetry legarmeh is mehuppakh or azla + paseq.
+# Poetic munach + paseq stays conjunctive (OSHB catalog). Ps 68:21 is the one OSHB numbers.
+POETIC_LEGARMEH = {0x05A4, 0x05A8}
 PROSE_LEGARMEH = {0x05A3}
 PASEQ = "\u05C0"
 
@@ -143,7 +144,7 @@ def _row(cp: int, index: int, order: int, name: str, kind: str, level: int | str
     }
 
 
-def classify_word(system: str, surface: str, trailer: str, is_last_unit: bool) -> dict:
+def classify_word(system: str, surface: str, trailer: str, is_last_unit: bool, verse_has_sof: bool = True) -> dict:
     table = POETIC if system == "poetic" else PROSE
     placed = _placed(surface)
     accents_raw = [item for item in placed if item[0] in ACCENTS]
@@ -199,9 +200,11 @@ def classify_word(system: str, surface: str, trailer: str, is_last_unit: bool) -
     silluq_index = None
     inferred = False
     groups = clusters(surface)
+    already_disjunctive = any(row["kind"] == "D" for row in rows)
     if is_last_unit and metegs_raw:
         silluq_index = metegs_raw[-1][1]
-    elif is_last_unit:
+    elif is_last_unit and (verse_has_sof or not already_disjunctive):
+        # No sof and the word already has its own disjunctive (Num 25:19 atnach): do not invent a silluq.
         inferred = True
         silluq_index = len(groups) - 1 if groups else 0
     meteg = []

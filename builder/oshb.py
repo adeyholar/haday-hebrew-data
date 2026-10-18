@@ -3,7 +3,7 @@
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from builder.accents import classify_word
+from builder.accents import HEBREW, classify_word
 from builder.books import BOOKS, verse_system
 from builder.canon import MAQAF, PASEQ, SOF, canon, consonants, multiset, pointed
 from builder.rhythm import build_tree, division_paths, poetic_paths
@@ -68,7 +68,10 @@ def _apply_seg(word: dict, kind: str) -> str | None:
     if kind == "x-maqqef":
         _append_trailer(word, MAQAF)
     elif kind == "x-paseq":
-        _append_trailer(word, PASEQ_TRAILER)
+        piece = PASEQ_TRAILER
+        if word["trailer"].endswith(" "):
+            piece = f"{PASEQ} "
+        _append_trailer(word, piece)
     elif kind == "x-sof-pasuq":
         _append_trailer(word, SOF)
     elif kind == "x-reversednun":
@@ -195,7 +198,7 @@ def parse_book(path: Path, osis: str) -> list[dict]:
                     word["qere_words"][-1]["_reading_maqaf"] = True
             for word in main:
                 _blank(word)
-            _analyze(stream, system)
+            _analyze(stream, system, has_sof)
             words: list[dict] = []
             for word in main:
                 word["ref"] = ref
@@ -297,12 +300,17 @@ def _poetic_pairs(units: list[dict]) -> None:
             prev["level"] = 2
             prev["words"][-1]["main_accent"] = "revia_qatan"
             prev["words"][-1]["level"] = 2
+            for row in prev["words"][-1].get("accents") or []:
+                if row.get("role") == "main" and row["name"] in ("revia_gadol", "revia"):
+                    row["name"] = "revia_qatan"
+                    row["name_he"] = HEBREW["revia_qatan"]
+                    row["level"] = 2
 
 
-def _analyze(reading: list[dict], system: str) -> None:
+def _analyze(reading: list[dict], system: str, has_sof: bool) -> None:
     last_index = len(reading) - 1
     for index, word in enumerate(reading):
-        info = classify_word(system, word["surface"], word["trailer"], index == last_index)
+        info = classify_word(system, word["surface"], word["trailer"], index == last_index, has_sof)
         word["accents"] = info["accents"]
         word["meteg"] = info["meteg"]
         word["main_accent"] = info["main_accent"]
