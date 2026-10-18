@@ -5,7 +5,7 @@ Living picture of **what this dataset is today**. Not the class site. Not a wish
 | | |
 |---|---|
 | **Snapshot** | 18 October 2026 |
-| **Repo** | https://github.com/adeyholar/haday-hebrew-data (`main`, `200e8dc`) |
+| **Repo** | https://github.com/adeyholar/haday-hebrew-data (`main`). Builder commit `200e8dc`. |
 | **Release** | https://github.com/adeyholar/haday-hebrew-data/releases/tag/v1.0.0 |
 | **Spec** | https://app.notion.com/p/3fd058f607b1816e8bcbde360c1a546d |
 | **Class site** | Not wired. https://hebrewmentor.haday.app still reads `public/tanakh/books/*.json`, which drops the accents. |
