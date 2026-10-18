@@ -4,9 +4,9 @@ Living picture of **what this dataset is today**. Not the class site. Not a wish
 
 | | |
 |---|---|
-| **Snapshot** | 18 October 2026 |
-| **Repo** | https://github.com/adeyholar/haday-hebrew-data (`main`). Builder commit `200e8dc`. |
-| **Release** | https://github.com/adeyholar/haday-hebrew-data/releases/tag/v1.0.0 |
+| **Snapshot** | 18 October 2026, after the Dev Desk review of v1.0.0 |
+| **Repo** | https://github.com/adeyholar/haday-hebrew-data (`main`). Dataset version **1.1.0**. |
+| **Release** | v1.0.0 was the first cut. v1.1.0 is the review fix. The class site is still not wired to either. |
 | **Spec** | https://app.notion.com/p/3fd058f607b1816e8bcbde360c1a546d |
 | **Class site** | Not wired. https://hebrewmentor.haday.app still reads `public/tanakh/books/*.json`, which drops the accents. |
 | **BHSA** | Off. Do not turn it on without the license note in the spec. |
@@ -65,7 +65,7 @@ SQLite table `word`. The chapter JSON (`dist/json/<OSIS>/<chapter>.json`) is the
 
 ## Genesis 1:1 (the acceptance verse)
 
-Seven words. Six accents in the accent range: tipcha, munach, atnach, tipcha, merkha, merkha. One silluq (the meteg on אָ in הָאָֽרֶץ). One sof pasuq. Two shin dots. The pause tree splits at the atnach, unit 3. OSHB paths on the disjunctive words: `1.0`, `1`, `0.0`, `0`.
+Seven words. Six accents in the accent range, in this order: tipcha, munach, atnach, merkha, tipcha, merkha. One silluq (the meteg on אָ in הָאָֽרֶץ). One sof pasuq. Two shin dots. The pause tree splits at the atnach, unit 3. OSHB paths on the disjunctive words: `1.0`, `1`, `0.0`, `0`.
 
 Stress checks that must keep passing:
 
@@ -74,7 +74,7 @@ Stress checks that must keep passing:
 | בְּרֵאשִׁ֖ית | Gen 1:1 | shin, one syllable from the end, source `accent` |
 | הָאָֽרֶץ | Gen 1:1 | silluq on alef, two from the end |
 | וְהָאָ֗רֶץ | Gen 1:2 | revia on alef, two from the end |
-| תֹּהוּ | Gen 1:2 | doubled pashta on tav, two from the end, source `doubled` |
+| תֹ֨הוּ֙ | Gen 1:2 | doubled pashta on tav, two from the end, source `doubled`. OSHB has no dagesh in תֹהוּ |
 | וַיֹּאמֶר | Gen 1:3 | stress on yod, two from the end |
 
 OSHB writes a doubled pashta as qadma on the stressed letter and pashta on the last letter. UXLC writes two pashta marks. We keep the OSHB spelling and label the stress `doubled`.
@@ -96,21 +96,31 @@ Nine qere words have no ketiv in front of them (OSHB calls them adaptations). Th
 
 ## Rhythm
 
-Prose on Genesis agrees with OSHB’s `n` on **98.8%** of verses. Exodus is 98.9%. All prose books together are **96.8%** (18,147 of 18,748). Poetry (Psalms, Proverbs, Job) is **84.9%** (3,789 of 4,465). The spec’s hope was 95% on poetry. That bar is not met.
+Prose agrees with OSHB’s `n` on **99.69%** of verses (18,689 / 18,748). That clears the 98% bar. Genesis stays inside that bar. Poetry (Psalms, Proverbs, Job) is **84.2%** (3,758 / 4,465). The 95% hope is not met. Dev Desk has not signed the poetry list off.
 
-When they disagree, `rhythm_path` stays OSHB’s value. The computed path is `rhythm_path_computed` in SQLite. Every miss is in `build-report/rhythm-mismatch.csv` inside the release tar.
+A ketiv is read from its qere for accents, stress, and the pause tree. The written consonants stay the ketiv. Where they disagree with OSHB, `rhythm_path` stays OSHB’s value. The computed path is `rhythm_path_computed` in SQLite. Every miss is in `build-report/rhythm-mismatch.csv`.
 
-Path numbers this builder uses: silluq is `0`, atnach is `1`, ole veyored is `2`. A poetic verse with ole and no atnach gives `1` to the strongest king after the ole. A prose verse with no atnach does **not** get that promotion. Doing it there dropped Genesis under 98%.
+Path numbers: silluq is `0`, atnach is `1`, ole veyored is `2`. A poetic verse with ole and no atnach gives `1` to the strongest king after the ole. A prose verse with no atnach does not.
+
+Prose legarmeh is munach followed by paseq only. Mahpakh or qadma followed by paseq stays conjunctive. Poetry still treats munach, mehuppakh, and azla before paseq as legarmeh, because dropping that made the poetry match worse, not better.
+
+A verse whose only pause is the final silluq still names silluq as its governor. If the last word has no U+05BD, the silluq row is marked `inferred` and the text is not given a fake meteg.
+
+## Stress
+
+Holam male (וֹ) and shureq (וּ) belong to the consonant before the vav. אוֹר, טוֹב, תְּהוֹם, and רוּחַ are one syllable from the end when the accent is on that consonant. After that fix, `default-ultima` is 23,263 words. That list is still for Dev Desk. The old 24,363 count was the bug.
 
 ## Stress and the other reports
 
-`build-report/stress-review.csv` lists **24,363** words whose stress fell back to the last syllable (`default-ultima`), because the accent is written on the first or last letter and the word has no conjunctive and no meteg to mark the tone. Dev Desk has not signed that list.
+`build-report/stress-review.csv` lists words whose stress fell back to the last syllable (`default-ultima`). Re-read it from the v1.1.0 build. The v1.0.0 count of 24,363 was wrong because וֹ and וּ were counted as their own syllables.
 
-`build-report/legarmeh.csv` lists every munach, mahpakh, or azla that is followed by paseq. Those are marked disjunctive. OSHB often left `n` empty on them, so they show up as rhythm misses. That is expected until someone reviews them.
+`build-report/legarmeh.csv` lists every munach, and in poetry every mehuppakh or azla, that is followed by paseq.
 
-`build-report/uxlc-diff.csv` has **6,345** rows: 6,321 mark differences and 24 tokenization differences. No letter-level diffs in that file. The common mark difference is the doubled pashta (OSHB qadma + pashta, UXLC two pashtas) and the combining grapheme joiner UXLC inserts. OSHB was not changed to match.
+`build-report/uxlc-diff.csv` from v1.1.0 is the triage file. UXLC `<x>` markers are not part of the word. Doubled pashta and UXLC’s CGJ are normalized for the comparison only, and OSHB is not changed. The report is about 1,171 rows: about 1,139 mark differences, 26 tokenization differences, and 6 letter differences. The letter rows include 2 Samuel 13:37, 2 Samuel 14:7, Ezekiel 16:36, Amos 7:2, and 2 Chronicles 27:4. Dev Desk has not signed this list off.
 
 `build-report/accent-unknown.csv` is empty.
+
+The chapter JSON nests `qere` under the ketiv, with `kq_group`. Alternative accent readings and the exegesis notes are in the SQLite `word_alt` table and on the word as `alternatives`.
 
 ## What the class app still does
 

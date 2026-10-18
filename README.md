@@ -15,6 +15,14 @@ The printed BHS scan is not a source. Nothing in this repository is taken from i
 
 The mirrors are in `sources/`. A build fails the tests if the word counts move. Re-pinning is a deliberate change.
 
+## Re-pin
+
+1. Replace `sources/morphhb-wlc/*.xml` or `sources/Tanach.xml.zip` with the new pin. Do not take anything from a BHS scan.
+2. `cd sources && sha256sum morphhb-wlc/*.xml Tanach.xml.zip > SHA256SUMS` and sort that file the way the old one is sorted.
+3. Write the new OSHB commit in `builder/build.py` (`OSHB_COMMIT`) and in this README. For a new UXLC zip, write the new SHA-256 there too.
+4. Run `python -m unittest discover -s tests`. If a count moved, change the test on purpose and say why in the as-built. Do not let the build rewrite `tests/expected-histogram.json`.
+5. Run `python -m builder.build --out dist` and read `dist/build-report/summary.json` before tagging a release.
+
 ## Build
 
 ```bash

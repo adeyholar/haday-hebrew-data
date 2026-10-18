@@ -8,7 +8,11 @@ def build_tree(units: list[dict]) -> dict | None:
     def rec(i: int, j: int) -> dict:
         inner = [k for k in range(i, j) if units[k]["level"] is not None]
         if not inner:
-            return {"leaf": [units[i]["unit"], units[j]["unit"]], "accent": units[j]["accent"]}
+            return {
+                "governor": units[j]["accent"],
+                "leaf": [units[i]["unit"], units[j]["unit"]],
+                "accent": units[j]["accent"],
+            }
         strongest = min(units[k]["level"] for k in inner)
         split = next(k for k in inner if units[k]["level"] == strongest)
         return {

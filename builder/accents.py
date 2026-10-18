@@ -72,6 +72,7 @@ HEBREW = {
     "revia_mugrash": "רְבִיעַ מֻגְרָשׁ",
     "zarqa": "זַרְקָא",
     "pashta": "פַּשְׁטָא",
+    "pashta_first": "פַּשְׁטָא",
     "yetiv": "יְתִיב",
     "tevir": "תְּבִיר",
     "geresh": "גֵּרֵשׁ",
@@ -103,7 +104,9 @@ HEBREW = {
     "yored": "יוֹרֵד",
 }
 
-LEGARMEH_CPS = {0x05A3, 0x05A4, 0x05A8}
+# Prose legarmeh is munach + paseq only. Poetry also promotes mehuppakh and azla before paseq.
+POETIC_LEGARMEH = {0x05A3, 0x05A4, 0x05A8}
+PROSE_LEGARMEH = {0x05A3}
 PASEQ = "\u05C0"
 
 
@@ -124,6 +127,22 @@ def _placed(surface: str) -> list[tuple[int, int, int]]:
     return found
 
 
+def _row(cp: int, index: int, order: int, name: str, kind: str, level: int | str, placement: str, compound: str | None) -> dict:
+    return {
+        "cp": _cp_hex(cp) if cp else "",
+        "name": name,
+        "name_he": HEBREW.get(name, ""),
+        "role": "secondary",
+        "kind": kind,
+        "level": level,
+        "letter_index": index,
+        "placement": placement,
+        "compound": compound,
+        "_order": order,
+        "_cp": cp,
+    }
+
+
 def classify_word(system: str, surface: str, trailer: str, is_last_unit: bool) -> dict:
     table = POETIC if system == "poetic" else PROSE
     placed = _placed(surface)
@@ -133,20 +152,22 @@ def classify_word(system: str, surface: str, trailer: str, is_last_unit: bool) -
     has_paseq = PASEQ in trailer
 
     ole_here = 0x05AB in cps
-    yored_here = 0x05A5 in cps and (ole_here or False)
-    # yored-with-ole on the same word is decided here; ole on the previous unit is applied by the verse pass.
-
     rows: list[dict] = []
     unknown: list[int] = []
     for cp, index, order in accents_raw:
+        compound = None
         if system == "poetic" and cp == 0x0597 and 0x059D in cps:
             name, kind, level, placement = "revia_mugrash", "D", 1, "imp"
+            compound = "revia_mugrash"
         elif system == "poetic" and cp == 0x059D and 0x0597 in cps:
-            continue
+            name, kind, level, placement = "geresh_muqdam", "C", "C", "imp"
+            compound = "revia_mugrash"
         elif system == "poetic" and ole_here and cp == 0x05A5:
-            name, kind, level, placement = "ole_veyored", "D", 0, "imp"
+            name, kind, level, placement = "yored", "D", 0, "imp"
+            compound = "ole_veyored"
         elif system == "poetic" and ole_here and cp == 0x05AB and 0x05A5 in cps:
-            continue
+            name, kind, level, placement = "ole", "C", "C", "imp"
+            compound = "ole_veyored"
         elif cp in table:
             name, kind, level, placement = table[cp]
         elif cp in PROSE:
@@ -155,53 +176,52 @@ def classify_word(system: str, surface: str, trailer: str, is_last_unit: bool) -
         else:
             name, kind, level, placement = "unknown", "C", "C", "imp"
             unknown.append(cp)
-        if has_paseq and cp in LEGARMEH_CPS and cp == cps[-1]:
+        if system == "poetic" and cp == 0x0593 and has_paseq:
+            name, kind, level, placement = "shalshelet_gedolah", "D", 1, "imp"
+        if has_paseq and cp == cps[-1] and cp in (POETIC_LEGARMEH if system == "poetic" else PROSE_LEGARMEH):
             level_n = 2 if system == "poetic" else 3
             name = "legarmeh"
             kind, level, placement = "D", level_n, "imp"
         if system == "prose" and cp == 0x0593 and not has_paseq:
             unknown.append(cp)
-        rows.append(
-            {
-                "cp": _cp_hex(cp),
-                "name": name,
-                "name_he": HEBREW.get(name, ""),
-                "role": "secondary",
-                "kind": kind,
-                "level": level,
-                "letter_index": index,
-                "placement": placement,
-                "_order": order,
-                "_cp": cp,
-            }
+        rows.append(_row(cp, index, order, name, kind, level, placement, compound))
+
+    pashtas = [row for row in rows if row["name"] == "pashta"]
+    if len(pashtas) == 1:
+        earlier = next(
+            (row for row in rows if row["name"] in ("qadma", "azla") and row["letter_index"] < pashtas[0]["letter_index"]),
+            None,
         )
+        if earlier:
+            earlier["name"] = "pashta_first"
+            earlier["name_he"] = HEBREW["pashta_first"]
 
     silluq_index = None
+    inferred = False
+    groups = clusters(surface)
     if is_last_unit and metegs_raw:
         silluq_index = metegs_raw[-1][1]
+    elif is_last_unit:
+        inferred = True
+        silluq_index = len(groups) - 1 if groups else 0
     meteg = []
     for _cp, index, _order in metegs_raw:
-        meteg.append({"letter_index": index, "function": "silluq" if index == silluq_index else "meteg"})
+        meteg.append({"letter_index": index, "function": "silluq" if index == silluq_index and not inferred else "meteg"})
 
-    if silluq_index is not None:
+    if is_last_unit and not inferred and silluq_index is not None:
+        rows.append(_row(0x05BD, silluq_index, 10_000, "silluq", "D", 0, "imp", None))
+    elif inferred:
         rows.append(
             {
-                "cp": "U+05BD",
-                "name": "silluq",
-                "name_he": HEBREW["silluq"],
-                "role": "secondary",
-                "kind": "D",
-                "level": 0,
-                "letter_index": silluq_index,
-                "placement": "imp",
-                "_order": 10_000,
-                "_cp": METEG,
+                **_row(0, silluq_index or 0, 10_000, "silluq", "D", 0, "imp", None),
+                "cp": "",
+                "inferred": True,
             }
         )
 
     present = {row["name"] for row in rows}
     for row in rows:
-        if row["name"] == "tipcha" and ("atnach" in present or silluq_index is not None):
+        if row["name"] == "tipcha" and ("atnach" in present or (silluq_index is not None and not inferred)):
             row["name"] = "mayela"
             row["name_he"] = HEBREW["mayela"]
             row["kind"] = "C"
@@ -223,13 +243,23 @@ def classify_word(system: str, surface: str, trailer: str, is_last_unit: bool) -
     for row in rows:
         row.pop("_order", None)
         row.pop("_cp", None)
+        if not row.get("compound"):
+            row.pop("compound", None)
+        if not row.get("inferred"):
+            row.pop("inferred", None)
+    main_name = main["name"] if main else None
+    if any(row.get("compound") == "ole_veyored" and row["kind"] == "D" for row in rows):
+        main_name = "ole_veyored"
     level = main["level"] if main and main["kind"] == "D" and isinstance(main["level"], int) else None
+    if main_name == "ole_veyored":
+        level = 0
     return {
         "accents": rows,
         "meteg": meteg,
-        "main_accent": main["name"] if main else None,
+        "main_accent": main_name,
         "level": level,
         "kind": main["kind"] if main else None,
         "unknown": unknown,
-        "silluq_index": silluq_index,
+        "silluq_index": silluq_index if not inferred else None,
+        "silluq_inferred": inferred,
     }

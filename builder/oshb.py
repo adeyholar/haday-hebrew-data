@@ -10,6 +10,7 @@ from builder.rhythm import build_tree, division_paths
 from builder.stress import stress_for
 
 NS = "{http://www.bibletechnologies.net/2003/OSIS/namespace}"
+PASEQ_TRAILER = f" {PASEQ} "
 
 
 def _local(tag: str) -> str:
@@ -41,6 +42,7 @@ def _word_from(el: ET.Element) -> dict:
         "surface_src": surface_src,
         "surface": surface,
         "morphemes": parts,
+        "trailers": [],
         "trailer": "",
         "consonants": consonants(surface),
         "pointed": pointed(surface),
@@ -51,18 +53,71 @@ def _word_from(el: ET.Element) -> dict:
         "kq_group": None,
         "special": special,
         "pos": 0,
+        "qere_words": [],
+        "alternatives": [],
     }
 
 
-def _qere_words(note: ET.Element) -> list[dict]:
-    found: list[dict] = []
-    for el in note.iter(f"{NS}w"):
-        parent = None
-        word = _word_from(el)
-        word["kq_role"] = "qere"
-        found.append(word)
-        _ = parent
-    return found
+def _append_trailer(word: dict, trailer: str) -> None:
+    word["trailers"].append(trailer)
+    word["trailer"] = "".join(word["trailers"])
+
+
+def _apply_seg(word: dict, kind: str) -> str | None:
+    """Attach a separator. Returns a paragraph mark, or None."""
+    if kind == "x-maqqef":
+        _append_trailer(word, MAQAF)
+    elif kind == "x-paseq":
+        _append_trailer(word, PASEQ_TRAILER)
+    elif kind == "x-sof-pasuq":
+        _append_trailer(word, SOF)
+    elif kind == "x-reversednun":
+        word["special"].append("reversed_nun_after")
+    elif kind == "x-pe":
+        return "pe"
+    elif kind == "x-samekh":
+        return "samekh"
+    return None
+
+
+def _words_in(container: ET.Element) -> list[dict]:
+    """Qere (or other reading) words, keeping maqaf and paseq that sit between them."""
+    words: list[dict] = []
+    for child in list(container):
+        tag = _local(child.tag)
+        if tag == "w":
+            word = _word_from(child)
+            word["kq_role"] = "qere"
+            words.append(word)
+            tail = child.tail or ""
+            if tail and tail.strip() == "":
+                _append_trailer(word, " ")
+        elif tag == "seg" and words:
+            _apply_seg(words[-1], child.get("type") or "")
+        elif tag == "rdg":
+            words.extend(_words_in(child))
+    return words
+
+
+def _rdg_text(note: ET.Element) -> str:
+    parts: list[str] = []
+    for el in note.iter(f"{NS}rdg"):
+        parts.append("".join(el.itertext()).strip())
+    return " ".join(part for part in parts if part)
+
+
+def _blank(word: dict) -> None:
+    word.setdefault("accents", [])
+    word.setdefault("meteg", [])
+    word.setdefault("main_accent", None)
+    word.setdefault("level", None)
+    word.setdefault("unknown_accents", [])
+    word.setdefault("stress", None)
+    word.setdefault("unit", None)
+    word.setdefault("rhythm_path", None)
+    word.setdefault("rhythm_path_computed", None)
+    word.setdefault("rhythm_match", None)
+    word.setdefault("silluq_inferred", False)
 
 
 def parse_book(path: Path, osis: str) -> list[dict]:
@@ -75,10 +130,12 @@ def parse_book(path: Path, osis: str) -> list[dict]:
             verse_no = int(ref.rsplit(".", 1)[-1])
             system = verse_system(osis, chapter, verse_no)
             main: list[dict] = []
+            stream: list[dict] = []
             attached: dict[str, list[dict]] = {}
             para = None
             has_sof = False
             open_ketiv: dict | None = None
+            verse_alts: list[dict] = []
             for child in list(verse_el):
                 tag = _local(child.tag)
                 if tag == "w":
@@ -89,50 +146,56 @@ def parse_book(path: Path, osis: str) -> list[dict]:
                         word["kq_group"] = f"{ref}:{word['id']}"
                         open_ketiv = word
                     main.append(word)
+                    stream.append(word)
                 elif tag == "seg":
-                    kind = child.get("type")
-                    if kind == "x-maqqef" and main:
-                        main[-1]["trailer"] = MAQAF
-                    elif kind == "x-paseq" and main:
-                        main[-1]["trailer"] = PASEQ
-                    elif kind == "x-sof-pasuq":
+                    kind = child.get("type") or ""
+                    if kind == "x-sof-pasuq":
                         has_sof = True
-                        if main:
-                            main[-1]["trailer"] = SOF
-                    elif kind == "x-pe":
-                        para = "pe"
-                    elif kind == "x-samekh":
-                        para = "samekh"
-                    elif kind == "x-reversednun" and main:
-                        main[-1]["special"].append("reversed_nun_after")
+                    # Verse separators belong to the written word. Qere-internal
+                    # separators are handled inside the note, not here.
+                    if main and kind in ("x-maqqef", "x-paseq", "x-sof-pasuq", "x-reversednun", "x-pe", "x-samekh"):
+                        mark = _apply_seg(main[-1], kind)
+                        if mark:
+                            para = mark
                 elif tag == "note" and child.get("type") == "variant":
-                    qere = _qere_words(child)
+                    qere = _words_in(child)
                     host = open_ketiv if open_ketiv is not None else (main[-1] if main else None)
                     if qere and host is not None:
                         group = host["kq_group"] or f"{ref}:qere:{qere[0]['id']}"
-                        if host.get("kq_role") != "ketiv":
-                            host["kq_group"] = None
+                        host["qere_words"] = qere
                         for item in qere:
                             item["pos"] = host["pos"]
                             item["kq_group"] = group if host.get("kq_role") == "ketiv" else f"{ref}:qere:{item['id']}"
                             item["ref"] = ref
-                            item["unit"] = None
-                            info = classify_word(system, item["surface"], item["trailer"], False)
-                            item["accents"] = info["accents"]
-                            item["meteg"] = info["meteg"]
-                            item["main_accent"] = info["main_accent"]
-                            item["level"] = info["level"]
-                            item["unknown_accents"] = info["unknown"]
-                            item["stress"] = stress_for(item["surface"], item["accents"], item["meteg"], False)
-                            item["rhythm_path"] = None
-                            item["rhythm_path_computed"] = None
-                            item["rhythm_match"] = None
-                        attached.setdefault(host["id"], []).extend(qere)
+                        if host.get("kq_role") == "ketiv" and stream and stream[-1] is host:
+                            stream.pop()
+                            stream.extend(qere)
+                        else:
+                            index = stream.index(host)
+                            stream[index + 1 : index + 1] = qere
+                        attached[host["id"]] = qere
                     open_ketiv = None
+                elif tag == "note" and child.get("type") in ("alternative", "exegesis"):
+                    alt = {"note_type": child.get("type"), "rdg": _rdg_text(child)}
+                    if main:
+                        main[-1]["alternatives"].append(alt)
+                    else:
+                        verse_alts.append(alt)
+            if verse_alts and main:
+                main[0]["alternatives"] = verse_alts + main[0]["alternatives"]
+                verse_alts = []
             for index, word in enumerate(main):
-                if word["trailer"] == "" and index < len(main) - 1:
-                    word["trailer"] = " "
-            _analyze(main, system)
+                if not word["trailers"] and index < len(main) - 1:
+                    _append_trailer(word, " ")
+                word["trailer"] = "".join(word["trailers"])
+            for word in stream:
+                word["trailer"] = "".join(word["trailers"])
+            for word in main:
+                if word.get("kq_role") == "ketiv" and word.get("qere_words") and MAQAF in word["trailer"]:
+                    word["qere_words"][-1]["_reading_maqaf"] = True
+            for word in main:
+                _blank(word)
+            _analyze(stream, system)
             words: list[dict] = []
             for word in main:
                 word["ref"] = ref
@@ -140,7 +203,10 @@ def parse_book(path: Path, osis: str) -> list[dict]:
                 words.extend(attached.get(word["id"], []))
             text_src = "".join(word["surface_src"] + word["trailer"] for word in main)
             text = "".join(word["surface"] + word["trailer"] for word in main)
-            units = _units(main)
+            if has_sof and not text_src.endswith(SOF):
+                text_src += SOF
+                text += SOF
+            units = _units(stream)
             verses.append(
                 {
                     "ref": ref,
@@ -156,35 +222,23 @@ def parse_book(path: Path, osis: str) -> list[dict]:
                     "has_sof_pasuq": 1 if has_sof else 0,
                     "rhythm": build_tree(units),
                     "words": words,
+                    "verse_alts": verse_alts,
                     "uxlc_status": "unaligned",
                 }
             )
     return verses
 
 
-def _units(main: list[dict]) -> list[dict]:
+def _units(reading: list[dict]) -> list[dict]:
     units: list[dict] = []
     bucket: list[dict] = []
-    for word in main:
+    for word in reading:
         bucket.append(word)
-        if word["trailer"] != MAQAF:
-            last = bucket[-1]
-            units.append(
-                {
-                    "unit": len(units) + 1,
-                    "level": last.get("level"),
-                    "accent": last.get("main_accent"),
-                    "words": bucket,
-                }
-            )
-            for item in bucket:
-                item["unit"] = len(units)
+        if MAQAF not in word["trailer"] and not word.get("_reading_maqaf"):
+            _close_unit(units, bucket)
             bucket = []
     if bucket:
-        last = bucket[-1]
-        units.append({"unit": len(units) + 1, "level": last.get("level"), "accent": last.get("main_accent"), "words": bucket})
-        for item in bucket:
-            item["unit"] = len(units)
+        _close_unit(units, bucket)
     _poetic_pairs(units)
     paths = division_paths(units)
     for unit in units:
@@ -202,10 +256,25 @@ def _units(main: list[dict]) -> list[dict]:
             else:
                 word["rhythm_path"] = None
                 word["rhythm_match"] = None
-            if word["trailer"] == MAQAF:
+            if MAQAF in word["trailer"]:
                 word["main_accent"] = None
                 word["stress"] = None
     return units
+
+
+def _close_unit(units: list[dict], bucket: list[dict]) -> None:
+    last = bucket[-1]
+    units.append(
+        {
+            "unit": len(units) + 1,
+            "level": last.get("level"),
+            "accent": last.get("main_accent"),
+            "words": bucket,
+        }
+    )
+    number = len(units)
+    for item in bucket:
+        item["unit"] = number
 
 
 def _poetic_pairs(units: list[dict]) -> None:
@@ -214,7 +283,7 @@ def _poetic_pairs(units: list[dict]) -> None:
         names = {row["name"] for row in accents}
         prev = units[index - 1] if index else None
         prev_names = {row["name"] for row in (prev["words"][-1].get("accents") or [])} if prev else set()
-        if "merkha" in names and "ole" in prev_names and "ole_veyored" not in names:
+        if "merkha" in names and "ole" in prev_names and "ole_veyored" not in names and unit["accent"] != "ole_veyored":
             unit["accent"] = "ole_veyored"
             unit["level"] = 0
             unit["words"][-1]["main_accent"] = "ole_veyored"
@@ -229,18 +298,17 @@ def _poetic_pairs(units: list[dict]) -> None:
             prev["words"][-1]["level"] = 2
 
 
-def _analyze(main: list[dict], system: str) -> None:
-    # Units are not known until trailers are set. Last unit is the last word that does not continue a maqaf, which is the last word.
-    last_index = len(main) - 1
-    # A maqaf chain's last word is the one whose trailer is not maqaf. The verse's last unit ends at the last word.
-    for index, word in enumerate(main):
+def _analyze(reading: list[dict], system: str) -> None:
+    last_index = len(reading) - 1
+    for index, word in enumerate(reading):
         info = classify_word(system, word["surface"], word["trailer"], index == last_index)
         word["accents"] = info["accents"]
         word["meteg"] = info["meteg"]
         word["main_accent"] = info["main_accent"]
         word["level"] = info["level"]
         word["unknown_accents"] = info["unknown"]
-        proclitic = word["trailer"] == MAQAF
+        word["silluq_inferred"] = info["silluq_inferred"]
+        proclitic = MAQAF in word["trailer"] or bool(word.get("_reading_maqaf"))
         word["stress"] = stress_for(word["surface"], word["accents"], word["meteg"], proclitic)
         if multiset(word["surface"]) != multiset(word["surface_src"]):
             raise SystemExit(f"mark mismatch {word['id']}")

@@ -1,10 +1,14 @@
+import json
 import unittest
+from collections import Counter
 from pathlib import Path
 
-from builder.canon import canon, multiset
+from builder.canon import MAQAF, PASEQ, canon, clusters, multiset
 from builder.oshb import load_oshb
+from builder.stress import FULL, _marks, _nuclei, _vowel_letter_vav
 
 ROOT = Path(__file__).resolve().parents[1]
+ACCENT_RANGE = range(0x0591, 0x05B0)
 
 
 class Accept(unittest.TestCase):
@@ -72,6 +76,135 @@ class Accept(unittest.TestCase):
             n += 1
             ok += int(all(flags))
         self.assertGreaterEqual(ok / n, 0.98)
+
+    def test_corpus_rhythm_floors(self):
+        # Prose cleared the 98% bar after ketiv/qere and prose legarmeh were fixed (18,689 / 18,748).
+        # Poetry is 3,758 / 4,465 (84.2%). The 95% bar is still open. Do not lower this floor to hide a drop.
+        prose_ok = prose_n = poetic_ok = poetic_n = 0
+        for book in self.books:
+            for verse in book["verses"]:
+                flags = [word["rhythm_match"] for word in verse["words"] if word.get("rhythm_match") in (True, False)]
+                if not flags:
+                    continue
+                good = all(flags)
+                if verse["system"] == "poetic":
+                    poetic_n += 1
+                    poetic_ok += int(good)
+                else:
+                    prose_n += 1
+                    prose_ok += int(good)
+        self.assertGreaterEqual(prose_ok / prose_n, 0.98)
+        self.assertGreaterEqual(poetic_ok / poetic_n, 0.84)
+
+    def test_vowel_letter_stress(self):
+        gen = {verse["ref"]: verse for verse in self.books[0]["verses"][:5]}
+        expect = [
+            ("Gen.1.2", "תהום"),
+            ("Gen.1.2", "ורוח"),
+            ("Gen.1.3", "אור"),
+            ("Gen.1.4", "טוב"),
+            ("Gen.1.5", "יום"),
+        ]
+        for ref, letters in expect:
+            words = [word for word in gen[ref]["words"] if word["consonants"] == letters and word.get("stress")]
+            self.assertTrue(words, letters)
+            for word in words:
+                self.assertEqual(word["stress"]["syll_from_end"], 1, word["surface"])
+
+    def test_vowel_letter_never_counts_as_a_following_syllable(self):
+        for book in self.books:
+            for verse in book["verses"]:
+                for word in verse["words"]:
+                    stress = word.get("stress")
+                    if not stress:
+                        continue
+                    groups = clusters(word["surface"])
+                    index = stress["letter_index"]
+                    if index is None or index + 1 >= len(groups):
+                        continue
+                    if _marks(groups[index][1]) & FULL:
+                        continue
+                    if _vowel_letter_vav(groups[index][0], _marks(groups[index][1])):
+                        continue
+                    next_letter, next_marks = groups[index + 1]
+                    if not _vowel_letter_vav(next_letter, _marks(next_marks)):
+                        continue
+                    nuclei = _nuclei(word["surface"])
+                    self.assertIn(index, nuclei, word["id"])
+                    self.assertNotIn(index + 1, nuclei, word["id"])
+                    after = sum(1 for n in nuclei if n > index)
+                    self.assertEqual(word["stress"]["syll_from_end"], 1 + after, word["id"])
+
+    def test_separators_and_qere_trailers(self):
+        words = [word for book in self.books for verse in book["verses"] for word in verse["words"]]
+        main = [word for word in words if word.get("kq_role") != "qere"]
+        qere = [word for word in words if word.get("kq_role") == "qere"]
+        self.assertEqual(sum(word["trailer"].count(MAQAF) for word in main), 42570)
+        self.assertEqual(sum(word["trailer"].count(MAQAF) for word in qere), 7)
+        self.assertEqual(sum(word["trailer"].count(PASEQ) for word in main), 2273)
+        self.assertEqual(sum(word["trailer"].count(PASEQ) for word in qere), 5)
+        alts = [alt for word in words for alt in word.get("alternatives") or []]
+        self.assertEqual(sum(1 for alt in alts if alt["note_type"] == "alternative"), 119)
+        self.assertEqual(sum(1 for alt in alts if alt["note_type"] == "exegesis"), 21)
+
+    def test_histogram_is_frozen_from_the_source(self):
+        expected = json.loads((ROOT / "tests" / "expected-histogram.json").read_text(encoding="utf-8"))
+        found: Counter[str] = Counter()
+        for book in self.books:
+            for verse in book["verses"]:
+                for word in verse["words"]:
+                    if word.get("kq_role") == "qere":
+                        continue
+                    for ch in word["surface_src"]:
+                        found[f"U+{ord(ch):04X}"] += 1
+        self.assertEqual(dict(found), expected)
+
+    def test_every_accent_mark_is_a_row(self):
+        for book in self.books:
+            for verse in book["verses"]:
+                for word in verse["words"]:
+                    in_text = sum(1 for ch in word["surface"] if ord(ch) in ACCENT_RANGE)
+                    in_rows = 0
+                    for row in word.get("accents") or []:
+                        cp = row.get("cp") or ""
+                        if not cp.startswith("U+"):
+                            continue
+                        if int(cp[2:], 16) in ACCENT_RANGE:
+                            in_rows += 1
+                    self.assertEqual(in_text, in_rows, word["id"])
+
+    def test_sof_verses_have_a_silluq_governor(self):
+        for book in self.books:
+            for verse in book["verses"]:
+                if not verse["has_sof_pasuq"]:
+                    continue
+                self.assertIsNotNone(verse["rhythm"], verse["ref"])
+                self.assertEqual(verse["rhythm"].get("governor"), "silluq", verse["ref"])
+
+    def test_ketiv_final_silluq_comes_from_the_qere(self):
+        verse = next(item for item in self.books[0]["verses"] if item["ref"] == "Gen.27.3")
+        qere = [word for word in verse["words"] if word.get("kq_role") == "qere"]
+        self.assertTrue(any(row["function"] == "silluq" for word in qere for row in word.get("meteg") or []))
+
+    def test_paseq_is_spaced_and_prose_mahpakh_is_not_legarmeh(self):
+        verse = next(item for item in self.books[0]["verses"] if item["ref"] == "Gen.1.5")
+        self.assertIn(" \u05C0 ", verse["text"])
+        word = next(word for word in verse["words"] if PASEQ in word["trailer"])
+        self.assertNotIn("legarmeh", [row["name"] for row in word["accents"]])
+
+    def test_qere_is_attached_for_the_reader(self):
+        verse = next(item for item in self.books[0]["verses"] if item["ref"] == "Gen.8.17")
+        ketiv = next(word for word in verse["words"] if word.get("kq_role") == "ketiv")
+        self.assertEqual(len(ketiv["qere_words"]), 1)
+        self.assertTrue(ketiv["qere_words"][0]["surface"])
+        self.assertTrue(ketiv["qere_words"][0].get("accents") or ketiv["qere_words"][0].get("stress"))
+
+    def test_normalization_vectors(self):
+        vectors = json.loads((ROOT / "tests" / "normalization-vectors.json").read_text(encoding="utf-8"))
+        for row in vectors:
+            text = "".join(chr(cp) for cp in row["cps"])
+            self.assertEqual(canon(canon(text)), canon(text), row["name"])
+            self.assertEqual(multiset(canon(text)), multiset(text), row["name"])
 
 
 if __name__ == "__main__":

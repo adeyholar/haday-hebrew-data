@@ -4,7 +4,9 @@ import argparse
 import csv
 import hashlib
 import json
+import os
 import sqlite3
+import subprocess
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,7 +16,7 @@ from builder.books import BOOKS
 from builder.oshb import load_oshb
 from builder.uxlc import compare, load_uxlc
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 OSHB_COMMIT = "3d15126fb1ef74867fc1434be1942e837932691f"
 UXLC_SHA = "423469bdcc4bfe36d7666f8e76fbd02c1674d77469093c06cee9779c0fba83e3"
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +28,20 @@ def _sha(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _commit() -> str:
+    env = os.environ.get("GITHUB_SHA", "").strip()
+    if env:
+        return env
+    try:
+        return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return ""
+
+
+def _accent_out(row: dict) -> dict:
+    return {key: value for key, value in row.items() if key != "name_he"}
+
+
 def _json_ready(word: dict) -> dict:
     return {
         "id": word["id"],
@@ -33,16 +49,23 @@ def _json_ready(word: dict) -> dict:
         "unit": word.get("unit"),
         "surface": word["surface"],
         "trailer": word["trailer"],
+        "trailers": word.get("trailers") or [],
         "pointed": word["pointed"],
         "consonants": word["consonants"],
         "morphemes": word["morphemes"],
-        "accents": word.get("accents") or [],
+        "accents": [_accent_out(row) for row in word.get("accents") or []],
+        "main_accent": word.get("main_accent"),
         "meteg": word.get("meteg") or [],
         "stress": word.get("stress"),
+        "special": word.get("special") or [],
         "kq_role": word.get("kq_role"),
+        "kq_group": word.get("kq_group"),
+        "qere": [_json_ready(item) for item in word.get("qere_words") or []],
+        "alternatives": word.get("alternatives") or [],
         "lemma": word.get("lemma") or "",
         "morph": word.get("morph_oshb") or "",
         "rhythm_path": word.get("rhythm_path"),
+        "silluq_inferred": bool(word.get("silluq_inferred")),
     }
 
 
@@ -83,6 +106,9 @@ def build(out: Path) -> dict:
         create table book (osis text primary key, ord integer, name_en text, name_he text, section text, uxlc_file text, default_system text);
         create table verse (ref text primary key, book text, chapter integer, verse integer, system text, text_src text, text text, word_count integer, unit_count integer, para_after text, has_sof_pasuq integer, rhythm text, uxlc_status text);
         create table word (id text primary key, ref text, pos integer, unit integer, surface_src text, surface text, morphemes text, trailer text, consonants text, pointed text, accents text, main_accent text, meteg text, stress text, kq_role text, kq_group text, special text, lemma text, morph_oshb text, oshb_n text, rhythm_path text, rhythm_path_computed text, uxlc text);
+        create table word_alt (ref text, host_id text, note_type text, rdg text);
+        create table unit (ref text, unit integer, level text, accent text);
+        create table accent (word_id text, ord integer, cp text, name text, role text, kind text, level text, letter_index integer, compound text);
         create table uxlc_diff (ref text, word_id text, oshb text, uxlc text, diff_type text, codepoints text);
         create index word_ref_pos on word(ref, pos);
         create index word_lemma on word(lemma);
@@ -100,6 +126,8 @@ def build(out: Path) -> dict:
         "uxlc_build": "27.7",
         "uxlc_sha256": UXLC_SHA,
         "bhsa_version": "",
+        "bhsa_license_basis": "not-included",
+        "builder_commit": _commit(),
         "normalization_version": "1",
         "accent_table_version": "1",
     }
@@ -125,10 +153,9 @@ def build(out: Path) -> dict:
             matched = True
             saw = False
             for word in verse["words"]:
-                if word.get("kq_role") == "qere":
-                    continue
-                for ch in word["surface_src"]:
-                    histogram[f"U+{ord(ch):04X}"] += 1
+                if word.get("kq_role") != "qere":
+                    for ch in word["surface_src"]:
+                        histogram[f"U+{ord(ch):04X}"] += 1
                 for cp in word.get("unknown_accents") or []:
                     unknown_rows.append((verse["ref"], word["id"], f"U+{cp:04X}"))
                 if word.get("stress") and word["stress"].get("source") == "default-ultima":
@@ -197,6 +224,36 @@ def build(out: Path) -> dict:
                     for word in verse["words"]
                 ],
             )
+            db.executemany(
+                "insert into word_alt values (?, ?, ?, ?)",
+                [(verse["ref"], word["id"], alt["note_type"], alt["rdg"]) for word in verse["words"] for alt in word.get("alternatives") or []],
+            )
+            db.executemany(
+                "insert into unit values (?, ?, ?, ?)",
+                [
+                    (verse["ref"], word.get("unit"), word.get("level"), word.get("main_accent"))
+                    for word in verse["words"]
+                    if word.get("rhythm_match") is not None
+                ],
+            )
+            db.executemany(
+                "insert into accent values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (
+                        word["id"],
+                        index,
+                        row.get("cp"),
+                        row.get("name"),
+                        row.get("role"),
+                        row.get("kind"),
+                        row.get("level"),
+                        row.get("letter_index"),
+                        row.get("compound"),
+                    )
+                    for word in verse["words"]
+                    for index, row in enumerate(word.get("accents") or [])
+                ],
+            )
         for chapter, verses in by_chapter.items():
             folder = json_root / osis
             folder.mkdir(exist_ok=True)
@@ -238,6 +295,15 @@ def build(out: Path) -> dict:
     (report / "no-sof-pasuq.json").write_text(json.dumps(no_sof, ensure_ascii=False, indent=2), encoding="utf-8")
     accents = _accent_rows()
     (json_root / "accents.json").write_text(json.dumps(accents, ensure_ascii=False, indent=2), encoding="utf-8")
+    yaml_lines = []
+    for row in accents:
+        yaml_lines.append(f"- system: {row['system']}")
+        yaml_lines.append(f"  cp: \"{row['cp']}\"")
+        yaml_lines.append(f"  name: {row['name']}")
+        yaml_lines.append(f"  kind: {row['kind']}")
+        yaml_lines.append(f"  level: {row['level']}")
+        yaml_lines.append(f"  placement: {row['placement']}")
+    (json_root / "accents.yaml").write_text("\n".join(yaml_lines) + "\n", encoding="utf-8")
     (json_root / "books.json").write_text(
         json.dumps(
             [
@@ -259,29 +325,27 @@ def build(out: Path) -> dict:
         "stress_default_ultima": len(stress_rows),
         "no_sof_pasuq": len(no_sof),
     }
+    (report / "summary.json").write_text(json.dumps({"counts": counts, "histogram_size": len(histogram)}, indent=2), encoding="utf-8")
     files = {}
-    for path in sorted(json_root.rglob("*")):
-        if path.is_file():
-            files[str(path.relative_to(out))] = _sha(path)
+    for folder in (json_root, report):
+        for path in sorted(folder.rglob("*")):
+            if path.is_file() and path.name != "manifest.json":
+                files[str(path.relative_to(out))] = _sha(path)
     files["hebrew-bible.sqlite"] = _sha(db_path)
     manifest = {
         "dataset_version": VERSION,
         "built_at": built,
+        "builder_commit": meta["builder_commit"],
         "oshb_commit": OSHB_COMMIT,
         "uxlc_version": "2.6",
         "uxlc_build": "27.7",
         "uxlc_sha256": UXLC_SHA,
+        "bhsa_license_basis": "not-included",
         "counts": counts,
         "attribution": "Hebrew text: Westminster Leningrad Codex (public domain), as encoded by the Open Scriptures Hebrew Bible. Lemma and morphology: Original work of the Open Scriptures Hebrew Bible available at https://github.com/openscriptures/morphhb, licensed CC BY 4.0. Text cross-checked against the Unicode/XML Leningrad Codex: UXLC 2.6 (27.7), Tanach.us Inc., West Redding, CT, USA, Oct 2026.",
         "sha256": files,
     }
     (json_root / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-    # The manifest hashes itself last, after the file exists, and records every other file.
-    files["json/manifest.json"] = _sha(json_root / "manifest.json")
-    manifest["sha256"] = files
-    (json_root / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-    (report / "summary.json").write_text(json.dumps({"counts": counts, "histogram_size": len(histogram)}, indent=2), encoding="utf-8")
-    (ROOT / "tests" / "expected-histogram.json").write_text(json.dumps(dict(sorted(histogram.items())), indent=2), encoding="utf-8")
     return counts
 
 

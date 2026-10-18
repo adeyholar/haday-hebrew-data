@@ -10,10 +10,21 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Pinned sources
+        run: cd sources && sha256sum -c SHA256SUMS
       - name: No Unicode normalization of Hebrew
         run: |
-          if grep -RIn --include='*.py' -E 'unicodedata\.normalize|\.normalize\(' builder; then
+          if grep -RIn --include='*.py' --include='*.ts' --include='*.mjs' -E 'unicodedata\.normalize|\.normalize\(' builder packages; then
             echo "Hebrew must not be Unicode-normalized"
             exit 1
           fi
-      - run: python -m unittest discover -s tests
+      - name: No obvious secrets
+        run: |
+          if git grep -I -n -E 'AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}' -- . ':!*.xml' ':!sources/**'; then
+            echo "possible secret"
+            exit 1
+          fi
+      - name: Tests
+        run: python -m unittest discover -s tests
+      - name: canon.ts
+        run: node --experimental-strip-types packages/canon/canon.test.ts
