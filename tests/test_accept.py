@@ -78,8 +78,9 @@ class Accept(unittest.TestCase):
         self.assertGreaterEqual(ok / n, 0.98)
 
     def test_corpus_rhythm_floors(self):
-        # Prose cleared the 98% bar after ketiv/qere and prose legarmeh were fixed (18,689 / 18,748).
-        # Poetry is 3,758 / 4,465 (84.2%). The 95% bar is still open. Do not lower this floor to hide a drop.
+        # Prose cleared 98% (18,689 / 18,748). Poetry cleared 95% after the near/remote
+        # divider and the virtual atnach (revia gadol when atnach is absent).
+        # Do not drop either floor to hide a regression.
         prose_ok = prose_n = poetic_ok = poetic_n = 0
         for book in self.books:
             for verse in book["verses"]:
@@ -94,7 +95,7 @@ class Accept(unittest.TestCase):
                     prose_n += 1
                     prose_ok += int(good)
         self.assertGreaterEqual(prose_ok / prose_n, 0.98)
-        self.assertGreaterEqual(poetic_ok / poetic_n, 0.84)
+        self.assertGreaterEqual(poetic_ok / poetic_n, 0.95)
 
     def test_vowel_letter_stress(self):
         gen = {verse["ref"]: verse for verse in self.books[0]["verses"][:5]}

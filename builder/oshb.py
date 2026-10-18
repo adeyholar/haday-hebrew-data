@@ -6,7 +6,7 @@ from pathlib import Path
 from builder.accents import classify_word
 from builder.books import BOOKS, verse_system
 from builder.canon import MAQAF, PASEQ, SOF, canon, consonants, multiset, pointed
-from builder.rhythm import build_tree, division_paths
+from builder.rhythm import build_tree, division_paths, poetic_paths
 from builder.stress import stress_for
 
 NS = "{http://www.bibletechnologies.net/2003/OSIS/namespace}"
@@ -206,7 +206,7 @@ def parse_book(path: Path, osis: str) -> list[dict]:
             if has_sof and not text_src.endswith(SOF):
                 text_src += SOF
                 text += SOF
-            units = _units(stream)
+            units = _units(stream, system)
             verses.append(
                 {
                     "ref": ref,
@@ -229,7 +229,7 @@ def parse_book(path: Path, osis: str) -> list[dict]:
     return verses
 
 
-def _units(reading: list[dict]) -> list[dict]:
+def _units(reading: list[dict], system: str = "prose") -> list[dict]:
     units: list[dict] = []
     bucket: list[dict] = []
     for word in reading:
@@ -240,7 +240,7 @@ def _units(reading: list[dict]) -> list[dict]:
     if bucket:
         _close_unit(units, bucket)
     _poetic_pairs(units)
-    paths = division_paths(units)
+    paths = poetic_paths(units) if system == "poetic" else division_paths(units)
     for unit in units:
         computed = paths.get(unit["unit"])
         governor = unit["words"][-1]
@@ -283,7 +283,8 @@ def _poetic_pairs(units: list[dict]) -> None:
         names = {row["name"] for row in accents}
         prev = units[index - 1] if index else None
         prev_names = {row["name"] for row in (prev["words"][-1].get("accents") or [])} if prev else set()
-        if "merkha" in names and "ole" in prev_names and "ole_veyored" not in names and unit["accent"] != "ole_veyored":
+        prev_bare_ole = "ole" in prev_names and "yored" not in prev_names and "ole_veyored" not in prev_names
+        if "merkha" in names and prev_bare_ole and "ole_veyored" not in names and unit["accent"] != "ole_veyored":
             unit["accent"] = "ole_veyored"
             unit["level"] = 0
             unit["words"][-1]["main_accent"] = "ole_veyored"

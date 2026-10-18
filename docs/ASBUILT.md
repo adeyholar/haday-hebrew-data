@@ -96,7 +96,7 @@ Nine qere words have no ketiv in front of them (OSHB calls them adaptations). Th
 
 ## Rhythm
 
-Prose agrees with OSHB’s `n` on **99.69%** of verses (18,689 / 18,748). That clears the 98% bar. Genesis stays inside that bar. Poetry (Psalms, Proverbs, Job) is **84.2%** (3,758 / 4,465). The 95% hope is not met. Dev Desk has not signed the poetry list off.
+Prose agrees with OSHB’s `n` on **99.69%** of verses (18,689 / 18,748). That clears the 98% bar. Genesis stays inside that bar. Poetry (Psalms, Proverbs, Job) agrees on **96.1%** (4,291 / 4,465). That clears the 95% bar. The poetic path follows Wickes as recorded in the OSHB accent catalog: the rightmost disjunctive in a domain is the near divider, a stronger one to its left is the remote divider, and a weaker one nests under the near divider. With no atnach, a revia gadol takes number 1 and ole veyored stays 2. With neither, ole veyored takes 1. A merkha after a word that already holds both ole and yored is not a second ole veyored.
 
 A ketiv is read from its qere for accents, stress, and the pause tree. The written consonants stay the ketiv. Where they disagree with OSHB, `rhythm_path` stays OSHB’s value. The computed path is `rhythm_path_computed` in SQLite. Every miss is in `build-report/rhythm-mismatch.csv`.
 
