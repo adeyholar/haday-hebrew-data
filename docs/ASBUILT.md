@@ -128,7 +128,7 @@ A word whose only accent is prepositive (pashta, telisha gedola, dechi, geresh m
 
 `build-report/legarmeh.csv` lists every munach, and in poetry every mehuppakh or azla, that is followed by paseq.
 
-`build-report/uxlc-diff.csv` is what the signed triage did not change. The builder applies `sources/uxlc-triage-v1.1.1.csv` from its `decision` column only (`override`, `uncertain`, `optional`, `divide`, `join`, `compare`, `leave`). The `class` and `recommended_action` columns are for people; rewording them changes nothing. Any other decision value stops the build. By class:
+`build-report/uxlc-diff.csv` is what the signed triage did not change. The builder applies `sources/uxlc-triage-v1.1.1.csv` from its `decision` column only (`override`, `uncertain`, `optional`, `divide`, `join`, `compare`, `leave`). A join row that also takes UXLC's signed mark correction (only Ps 106:1) has `apply_uxlc_marks` = `yes`. The `class` column only names `review_class`; `recommended_action` and `verdict` are for people, and rewording them changes nothing. Any other `decision` or `apply_uxlc_marks` value stops the build. By class:
 
 | Triage class | Rows | What the build does |
 |---|---|---|

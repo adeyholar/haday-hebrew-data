@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from builder.overrides import DECISIONS, TriageError, row_decision  # noqa: E402
+from builder.overrides import DECISIONS, TriageError, paints_marks, row_decision  # noqa: E402
 from builder.pins import pin, pins, triage_path  # noqa: E402
 from builder.sources import SourceMismatch, pinned, verify_sources  # noqa: E402
 
@@ -49,6 +49,15 @@ class Integrity(unittest.TestCase):
             dict(counts),
             {"override": 567, "compare": 292, "uncertain": 147, "optional": 98, "leave": 51, "divide": 10, "join": 6},
         )
+
+    def test_apply_uxlc_marks_column(self):
+        with TRIAGE.open(encoding="utf-8", newline="") as handle:
+            rows = list(csv.DictReader(handle))
+        self.assertEqual([row["ref"] for row in rows if paints_marks(row)], ["Ps.106.1"])
+        with self.assertRaises(TriageError):
+            paints_marks({"ref": "x", "decision": "join", "apply_uxlc_marks": "y"})
+        with self.assertRaises(TriageError):
+            paints_marks({"ref": "x", "decision": "override", "apply_uxlc_marks": "yes"})
 
     def test_unknown_decision_fails(self):
         for value in ("", "apply", "Override", None):
