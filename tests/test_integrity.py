@@ -11,17 +11,18 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from builder.overrides import DECISIONS, TriageError, row_decision  # noqa: E402
+from builder.pins import pin, pins, triage_path  # noqa: E402
 from builder.sources import SourceMismatch, pinned, verify_sources  # noqa: E402
 
-TRIAGE = ROOT / "sources" / "uxlc-triage-v1.1.1.csv"
+TRIAGE = triage_path()
 
 
 class Integrity(unittest.TestCase):
     def test_sources_match_the_pins(self):
         sums = verify_sources()
-        self.assertIn("uxlc-triage-v1.1.1.csv", sums)
-        self.assertIn("Tanach.xml.zip", sums)
-        self.assertEqual(sum(1 for name in sums if name.startswith("morphhb-wlc/")), 39)
+        self.assertIn(pin("TRIAGE_FILE"), sums)
+        self.assertIn(pin("UXLC_ZIP"), sums)
+        self.assertEqual(sum(1 for name in sums if name.startswith(pin("OSHB_DIR") + "/")), 39)
 
     def test_a_changed_source_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -53,6 +54,13 @@ class Integrity(unittest.TestCase):
         for value in ("", "apply", "Override", None):
             with self.assertRaises(TriageError):
                 row_decision({"ref": "Gen.1.1", "word_id": "x", "decision": value, "recommended_action": "documented override candidate"})
+
+    def test_pins_txt_agrees_with_sha256sums(self):
+        values = pins()
+        self.assertEqual(pinned()[values["UXLC_ZIP"]], values["UXLC_SHA256"])
+        self.assertTrue(triage_path().is_file())
+        self.assertRegex(pin("DATASET_VERSION"), r"^\d+\.\d+\.\d+$")
+        self.assertRegex(pin("OSHB_COMMIT"), r"^[0-9a-f]{40}$")
 
     def test_pins_cover_every_file(self):
         names = set(pinned())

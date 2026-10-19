@@ -8,12 +8,14 @@ from pathlib import Path
 
 from builder.accents import classify_word
 from builder.canon import canon, clusters, consonants, multiset
-from builder.oshb import NS, load_oshb
+from builder.oshb import NS
+from builder.pins import oshb_dir, triage_path
+from corpus import books as corpus_books
 from builder.overrides import _strip, row_decision
 from builder.stress import stress_for
 
 ROOT = Path(__file__).resolve().parents[1]
-TRIAGE = ROOT / "sources" / "uxlc-triage-v1.1.1.csv"
+TRIAGE = triage_path()
 
 
 def _local(tag: str) -> str:
@@ -47,7 +49,7 @@ def _squeeze(text: str) -> str:
 class ReviewPolicy(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.books = load_oshb(ROOT / "sources" / "morphhb-wlc")
+        cls.books = corpus_books()
         cls.verses = {verse["ref"]: verse for book in cls.books for verse in book["verses"]}
         cls.words = {word["id"]: word for verse in cls.verses.values() for word in verse["words"]}
         with TRIAGE.open(encoding="utf-8", newline="") as handle:
@@ -101,7 +103,7 @@ class ReviewPolicy(unittest.TestCase):
 
     def test_text_src_is_oshb_byte_for_byte(self):
         checked = 0
-        for path in sorted((ROOT / "sources" / "morphhb-wlc").glob("*.xml")):
+        for path in sorted(oshb_dir().glob("*.xml")):
             for ref, text in oshb_verse_texts(path).items():
                 self.assertEqual(_squeeze(self.verses[ref]["text_src"]), text, ref)
                 checked += 1

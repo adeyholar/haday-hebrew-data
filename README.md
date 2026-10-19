@@ -32,7 +32,7 @@ python -m unittest discover -s tests
 
 `dist/` holds `hebrew-bible.sqlite`, one JSON file per chapter, the accent table, and the build reports. The reports are the review queue: accent unknowns, rhythm mismatches, stress defaults, and UXLC differences. OSHB is never overwritten to match UXLC.
 
-A release tar includes this README and `LICENSE-DATA.md` next to the data. The database is a separate `.sqlite.gz`. Do not publish a tag whose builder commit is behind `main`.
+A release tar includes this README, `LICENSE-DATA.md` and `LICENSE` next to the data. The database is a separate `.sqlite.gz`, and `SHA256SUMS` covers all three files. Release assets are made by `scripts/package.sh`. The tag workflow that runs it is in `docs/ci/release.yml` until it is installed into `.github/workflows/` (see `docs/ci/README.md`); it refuses a tag whose commit is behind `main` or whose version differs from `sources/PINS.txt`. The code is MIT (`LICENSE`); the data terms are in `LICENSE-DATA.md`.
 
 ## Attribution
 

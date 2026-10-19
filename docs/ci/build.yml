@@ -1,0 +1,48 @@
+name: build
+on:
+  push:
+  pull_request:
+jobs:
+  accept:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Pinned sources
+        run: cd sources && sha256sum -c SHA256SUMS
+      - name: No Unicode normalization of Hebrew
+        run: |
+          if grep -RIn --include='*.py' --include='*.ts' --include='*.mjs' -E 'unicodedata\.normalize|\.normalize\(' builder packages; then
+            echo "Hebrew must not be Unicode-normalized"
+            exit 1
+          fi
+      - name: No obvious secrets
+        run: |
+          if git grep -I -n -E 'AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}' -- . ':!*.xml' ':!sources/**'; then
+            echo "possible secret"
+            exit 1
+          fi
+      - name: Tests
+        run: python -m unittest discover -s tests
+      - name: Build the dataset
+        run: python -m builder.build --out dist
+      - name: Built SQLite matches the chapter JSON
+        run: python tests/check_dist.py dist
+      - name: canon.ts
+        run: node --experimental-strip-types packages/canon/canon.test.ts
+      - name: canon.ts matches canon.py on the whole corpus
+        run: |
+          python tests/canon_parity.py dist "$RUNNER_TEMP/canon-parity.json"
+          node --experimental-strip-types packages/canon/parity.ts "$RUNNER_TEMP/canon-parity.json"
+      - name: Build is reproducible
+        run: |
+          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          python -m builder.build --out dist-a > /dev/null
+          python -m builder.build --out dist-b > /dev/null
+          cmp dist-a/hebrew-bible.sqlite dist-b/hebrew-bible.sqlite
+          diff -r dist-a/json dist-b/json > /dev/null

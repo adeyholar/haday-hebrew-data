@@ -11,7 +11,7 @@ The triage is layered by class (Re-review 6):
 
 A row marked none or document is not changed. A comparison-only row is not changed.
 Every changed word carries review_class. text_src is never touched: it stays OSHB.
-The patch file is sources/uxlc-triage-v1.1.1.csv. Its `decision` column is the only policy input;
+The patch file is sources/<TRIAGE_FILE from PINS.txt>. Its `decision` column is the only policy input;
 the class and recommended_action columns are prose for people. An unknown decision stops the build.
 """
 
@@ -19,7 +19,9 @@ import csv
 from pathlib import Path
 
 from builder.canon import canon, clusters, consonants, pointed
+from builder.errors import TriageError
 from builder.oshb import rebuild_verse
+from builder.pins import uxlc_zip
 from builder.uxlc import load_uxlc
 
 CGJ = "\u034f"
@@ -39,10 +41,6 @@ CLASS_KEY = {
 
 
 DECISIONS = ("override", "uncertain", "optional", "divide", "join", "compare", "leave")
-
-
-class TriageError(ValueError):
-    """The triage CSV cannot be applied as written."""
 
 
 def row_decision(row: dict) -> str:
@@ -91,7 +89,9 @@ def resegment(word: dict) -> None:
     sizes = [len(clusters(part)) for part in parts]
     groups = clusters(word["surface"])
     if sum(sizes) != len(groups):
+        # Reported in build-report/summary.json as morpheme_fallbacks.
         word["morphemes"] = [word["surface"]]
+        word["morpheme_fallback"] = len(parts) > 1
         return
     out: list[str] = []
     at = 0
@@ -251,14 +251,14 @@ def _paint_span(words: list[dict], text: str, row: dict) -> None:
         _paint(word, _join_clusters(parts[offset : offset + count]), row)
         offset += count
     if offset != len(parts):
-        raise SystemExit(f"paint length {words[0]['id']}")
+        raise TriageError(f"paint length {words[0]['id']}")
 
 
 def _reshape(verse: dict, theirs: list[dict], row: dict, how: str) -> None:
     words = _main(verse)
     ops = _align(words, theirs)
     if ops is None:
-        raise SystemExit(f"cannot align {verse['ref']}")
+        raise TriageError(f"cannot align {verse['ref']}")
     if how == "join":
         for op, at, ux in ops:
             if op == "merge":
@@ -275,18 +275,19 @@ def _reshape(verse: dict, theirs: list[dict], row: dict, how: str) -> None:
             new.append(words[at])
         elif op == "merge":
             if words[at].get("kq_role") == "ketiv" or words[at + 1].get("kq_role") == "ketiv":
-                raise SystemExit(f"ketiv merge {verse['ref']}")
+                raise TriageError(f"ketiv merge {verse['ref']}")
             new.append(_merge(words[at], words[at + 1], theirs[ux]["text"], row))
         else:
             if words[at].get("kq_role") == "ketiv":
-                raise SystemExit(f"ketiv split {verse['ref']}")
+                raise TriageError(f"ketiv split {verse['ref']}")
             new.extend(_split(words[at], theirs[ux]["text"], theirs[ux + 1]["text"], row))
     verse["words"] = new
 
 
-def apply_review(books: list[dict], csv_path: Path, uxlc_zip: Path) -> None:
+def apply_review(books: list[dict], csv_path: Path, uxlc: "dict | Path | None" = None) -> None:
+    """Apply the triage. `uxlc` is the parsed UXLC, or a zip path to parse only if a row needs it."""
     if not csv_path.exists():
-        raise SystemExit(f"missing triage {csv_path}")
+        raise TriageError(f"missing triage {csv_path}")
     with csv_path.open(encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))
     by_id: dict[str, dict] = {}
@@ -303,7 +304,7 @@ def apply_review(books: list[dict], csv_path: Path, uxlc_zip: Path) -> None:
             continue
         word = by_id.get(row["word_id"])
         if word is None or not row.get("uxlc"):
-            raise SystemExit(f"override missing word {row['ref']} {row['word_id']}")
+            raise TriageError(f"override missing word {row['ref']} {row['word_id']}")
         if how == "override":
             _paint(word, row["uxlc"], row)
             touched.add(row["ref"])
@@ -311,7 +312,8 @@ def apply_review(books: list[dict], csv_path: Path, uxlc_zip: Path) -> None:
             _alternative(word, row, how)
     divide_rows = [row for row in rows if row_decision(row) in ("divide", "join")]
     if divide_rows:
-        uxlc = load_uxlc(uxlc_zip)
+        if not isinstance(uxlc, dict):
+            uxlc = load_uxlc(uxlc or uxlc_zip())
         for row in divide_rows:
             verse = by_ref[row["ref"]]
             osis = row["ref"].split(".")[0]

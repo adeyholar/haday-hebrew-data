@@ -13,13 +13,17 @@ from pathlib import Path
 
 from builder.accents import HEBREW, POETIC, PROSE
 from builder.books import BOOKS
+from builder.errors import BuildError
 from builder.oshb import load_oshb
+from builder.pins import oshb_dir, pin, uxlc_zip
 from builder.sources import verify_sources
 from builder.uxlc import compare, load_uxlc
 
-VERSION = "1.1.3"
-OSHB_COMMIT = "3d15126fb1ef74867fc1434be1942e837932691f"
-UXLC_SHA = "423469bdcc4bfe36d7666f8e76fbd02c1674d77469093c06cee9779c0fba83e3"
+VERSION = pin("DATASET_VERSION")
+OSHB_COMMIT = pin("OSHB_COMMIT")
+UXLC_SHA = pin("UXLC_SHA256")
+UXLC_VERSION = pin("UXLC_VERSION")
+UXLC_BUILD = pin("UXLC_BUILD")
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -27,6 +31,18 @@ def _sha(path: Path) -> str:
     digest = hashlib.sha256()
     digest.update(path.read_bytes())
     return digest.hexdigest()
+
+
+def _built_at() -> str:
+    """SOURCE_DATE_EPOCH if set, else the builder commit's date, else now. Same commit, same stamp."""
+    stamp = os.environ.get("SOURCE_DATE_EPOCH", "").strip()
+    if not stamp:
+        try:
+            stamp = subprocess.check_output(["git", "log", "-1", "--format=%ct"], cwd=ROOT, text=True, stderr=subprocess.DEVNULL).strip()
+        except (OSError, subprocess.CalledProcessError):
+            stamp = ""
+    when = datetime.fromtimestamp(int(stamp), timezone.utc) if stamp.isdigit() else datetime.now(timezone.utc)
+    return when.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _commit() -> str:
@@ -104,14 +120,17 @@ def _accent_rows() -> list[dict]:
 
 
 def build(out: Path) -> dict:
-    verify_sources()
+    sums = verify_sources()
+    if sums.get(pin("UXLC_ZIP")) != UXLC_SHA:
+        raise BuildError("PINS.txt UXLC_SHA256 does not match SHA256SUMS")
     out.mkdir(parents=True, exist_ok=True)
     report = out / "build-report"
     report.mkdir(exist_ok=True)
     json_root = out / "json"
     json_root.mkdir(exist_ok=True)
-    books = load_oshb(ROOT / "sources" / "morphhb-wlc")
-    diffs = compare(books, load_uxlc(ROOT / "sources" / "Tanach.xml.zip"))
+    uxlc = load_uxlc(uxlc_zip())
+    books = load_oshb(oshb_dir(), uxlc=uxlc)
+    diffs = compare(books, uxlc)
     db_path = out / "hebrew-bible.sqlite"
     if db_path.exists():
         db_path.unlink()
@@ -131,15 +150,18 @@ def build(out: Path) -> dict:
         create index word_consonants on word(consonants);
         create index word_morph on word(morph_oshb);
         create index verse_place on verse(book, chapter);
+        create index accent_word on accent(word_id);
+        create index word_alt_host on word_alt(host_id);
+        create index unit_ref on unit(ref);
         """
     )
-    built = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    built = _built_at()
     meta = {
         "dataset_version": VERSION,
         "built_at": built,
         "oshb_commit": OSHB_COMMIT,
-        "uxlc_version": "2.6",
-        "uxlc_build": "27.7",
+        "uxlc_version": UXLC_VERSION,
+        "uxlc_build": UXLC_BUILD,
         "uxlc_sha256": UXLC_SHA,
         "bhsa_version": "",
         "bhsa_license_basis": "not-included",
@@ -158,6 +180,7 @@ def build(out: Path) -> dict:
     rhythm_rows = []
     legarmeh_rows = []
     no_sof = []
+    morpheme_fallbacks: list[str] = []
     prose_n = prose_ok = poetic_n = poetic_ok = 0
     for book in books:
         osis = book["osis"]
@@ -174,6 +197,8 @@ def build(out: Path) -> dict:
                         histogram[f"U+{ord(ch):04X}"] += 1
                 for cp in word.get("unknown_accents") or []:
                     unknown_rows.append((verse["ref"], word["id"], f"U+{cp:04X}"))
+                if word.get("morpheme_fallback"):
+                    morpheme_fallbacks.append(word["id"])
                 if word.get("stress") and word["stress"].get("source") == "default-ultima":
                     stress_rows.append((verse["ref"], word["id"], word["surface"]))
                 for accent in word.get("accents") or []:
@@ -355,7 +380,8 @@ def build(out: Path) -> dict:
         "stress_default_ultima": len(stress_rows),
         "no_sof_pasuq": len(no_sof),
     }
-    (report / "summary.json").write_text(json.dumps({"counts": counts, "histogram_size": len(histogram)}, indent=2), encoding="utf-8")
+    review = {"morpheme_fallbacks": morpheme_fallbacks}
+    (report / "summary.json").write_text(json.dumps({"counts": counts, "histogram_size": len(histogram), **review}, indent=2), encoding="utf-8")
     files = {}
     for folder in (json_root, report):
         for path in sorted(folder.rglob("*")):
@@ -367,8 +393,8 @@ def build(out: Path) -> dict:
         "built_at": built,
         "builder_commit": meta["builder_commit"],
         "oshb_commit": OSHB_COMMIT,
-        "uxlc_version": "2.6",
-        "uxlc_build": "27.7",
+        "uxlc_version": UXLC_VERSION,
+        "uxlc_build": UXLC_BUILD,
         "uxlc_sha256": UXLC_SHA,
         "bhsa_license_basis": "not-included",
         "counts": counts,
@@ -383,7 +409,10 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", default=str(ROOT / "dist"))
     args = parser.parse_args()
-    counts = build(Path(args.out))
+    try:
+        counts = build(Path(args.out))
+    except BuildError as error:
+        raise SystemExit(f"build failed: {error}") from error
     print(json.dumps(counts, indent=2))
 
 

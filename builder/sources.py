@@ -3,12 +3,10 @@
 import hashlib
 from pathlib import Path
 
+from builder.errors import SourceMismatch
+
 SOURCES = Path(__file__).resolve().parents[1] / "sources"
 UNPINNED = {"SHA256SUMS", "PINS.txt"}
-
-
-class SourceMismatch(RuntimeError):
-    """A pinned source is missing, changed, or not listed in SHA256SUMS."""
 
 
 def _sha256(path: Path) -> str:

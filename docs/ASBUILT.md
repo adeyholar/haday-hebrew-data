@@ -39,11 +39,19 @@ python -m unittest discover -s tests
 
 No network is required. The pins are already in `sources/`. Do not call Unicode NFC or NFD on the Hebrew. `builder/` has no `unicodedata.normalize` and no `str.normalize`.
 
-`dist/` is not in git. The release holds the gzip of the SQLite file and a tar of the chapter JSON plus the review reports.
+`dist/` is not in git. The release holds the gzip of the SQLite file, a tar of the chapter JSON, a tar of the review reports, and a `SHA256SUMS` for the three. README.md, LICENSE-DATA.md and LICENSE are inside both tars.
+
+**Pins.** `sources/PINS.txt` is the one place for the dataset version, the OSHB commit, the UXLC version, build and hash, and the source file names (`builder/pins.py` reads it). The build fails if its UXLC hash disagrees with `SHA256SUMS`.
+
+**Reproducible.** `built_at` is `SOURCE_DATE_EPOCH` if set, otherwise the builder commit's date. The same commit gives the same SQLite file and JSON byte for byte (checked locally; `docs/ci/build.yml` adds the two-build check to CI). `scripts/package.sh dist release` makes the release assets with fixed tar order, owner and mtime and `gzip -n`.
+
+**Releasing.** Set `DATASET_VERSION` in `PINS.txt`, write `docs/releases/v<version>.md`, merge to `main`, then tag `v<version>` on `main`. The tag workflow (`docs/ci/release.yml`, waiting to be installed in `.github/workflows/` by someone with a workflow-scoped token) checks the tag matches the version and is not behind `main`, runs the tests, builds, runs `check_dist` and the canon parity check, packages, and uploads the assets and `SHA256SUMS`. Until it is installed, build from the tagged commit with `SOURCE_DATE_EPOCH` set to its commit date, run `check_dist`, and upload what `scripts/package.sh` writes, including `SHA256SUMS`.
+
+**Errors.** The builder raises `builder.errors.BuildError` subclasses (`SourceMismatch`, `PinError`, `TriageError`, `MarkError`); only the command line turns them into an exit code.
 
 ## What a word is
 
-SQLite table `word`. The chapter JSON (`dist/json/<OSIS>/<chapter>.json`) is the slice the app is meant to load. Qere words are rows of their own in SQLite. In the chapter JSON they are nested under the ketiv as `qere`.
+SQLite table `word`. Indexes: `word(ref, pos)`, `word(lemma)`, `word(consonants)`, `word(morph_oshb)`, `verse(book, chapter)`, `accent(word_id)`, `word_alt(host_id)`, `unit(ref)`. The chapter JSON (`dist/json/<OSIS>/<chapter>.json`) is the slice the app is meant to load. Qere words are rows of their own in SQLite. In the chapter JSON they are nested under the ketiv as `qere`.
 
 | Field | What it is |
 |---|---|
@@ -52,9 +60,10 @@ SQLite table `word`. The chapter JSON (`dist/json/<OSIS>/<chapter>.json`) is the
 | `surface` | The same marks, in HaDay order: shin/sin dot, dagesh, rafe, vowel, meteg, accents (accents keep their own order), upper/lower dots. |
 | `pointed` | `surface` without the accents and without meteg. Vowels, dagesh, and shin/sin dots stay. |
 | `consonants` | Letters only. |
-| `morphemes` | The slash pieces, so בראשית is `בְּ` + `רֵאשִׁ֖ית`. They are in the same mark order as `surface` and join back to it exactly. On a reviewed word they are cut from the final `surface` at the OSHB morpheme boundaries. |
+| `morphemes` | The slash pieces, so בראשית is `בְּ` + `רֵאשִׁ֖ית`. They are in the same mark order as `surface` and join back to it exactly. On a reviewed word they are cut from the final `surface` at the OSHB morpheme boundaries. Where that cut cannot be made, the word keeps one piece and its id is listed in `build-report/summary.json` under `morpheme_fallbacks`. |
 | `review`, `review_class` | Set only on a word the signed triage changed. `review_class` is `wlc_error`, `word_division`, `exegesis_join`, or `oshb_convention`. |
 | `trailer` | What follows the word: a space, maqaf `־`, paseq `׀`, sof pasuq `׃`, or nothing. |
+| `trailers` | JSON only. The trailer pieces in source order, for example `[" "]`, `["־"]`, or `[" ׀ "]`. `trailer` is their join. A word that ends the verse with sof pasuq keeps `׃` here. An exegesis split has `[]` and `trailer` `""`. |
 | `accents` | Each te‘am, with its name, level, and the consonant it sits on (`letter_index`, counting from 0). |
 | `meteg` | Each U+05BD. On the last word of the verse the rightmost one is `silluq`. The others are `meteg`. |
 | `stress` | `{letter_index, syll_from_end, source}`. Empty on a word that is only leaning on the next word through a maqaf. |
@@ -162,7 +171,11 @@ Do not replace the Tanakh JSON in the app by copying `surface` over the old file
 | `builder/oshb.py` | OSIS reader, ketiv/qere, units, maqaf chains. |
 | `builder/uxlc.py` | Verse and word alignment. Report only. Comparison treats U+05AA as U+05A2, and a `word_alt` row as already stored. |
 | `builder/overrides.py` | Applies `sources/uxlc-triage-v1.1.1.csv` by class: corrections onto `surface`, uncertain and diplomatic readings onto `word_alt`. |
-| `builder/build.py` | SQLite, chapter JSON, manifest, reports. |
+| `builder/build.py` | SQLite, chapter JSON, manifest, reports. Checks the source hashes first. |
+| `builder/pins.py`, `builder/sources.py` | `PINS.txt` and the `SHA256SUMS` check. |
+| `builder/errors.py` | The exceptions the builder raises. |
+| `scripts/package.sh` | Release assets and their `SHA256SUMS`. |
+| `packages/canon/parity.ts`, `tests/test_canon_parity.py` | canon.ts against canon.py on every distinct string in the corpus and UXLC (over 100,000). Runs in the unit tests; needs Node 22.6+, and fails on CI without it. `tests/canon_parity.py` does the same from a built `dist/`. |
 | `builder/books.py` | The 39 books in Tanakh order, and which Job verses are prose. |
 | `tests/test_accept.py` | Genesis 1:1, the five stress words, the word counts, Genesis rhythm ≥ 98%. |
 | `tests/test_review_policy.py` | The triage class policy, morphemes against surface, `text_src` against the OSHB XML for every verse, the word-division spaces, galgal, and the segolate and aleph stress words. |

@@ -4,7 +4,7 @@ from collections import Counter
 from pathlib import Path
 
 from builder.canon import MAQAF, PASEQ, canon, clusters, multiset
-from builder.oshb import load_oshb
+from corpus import books as corpus_books
 from builder.stress import FULL, _marks, _nuclei, _vowel_letter_vav
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,7 +14,7 @@ ACCENT_RANGE = range(0x0591, 0x05B0)
 class Accept(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.books = load_oshb(ROOT / "sources" / "morphhb-wlc")
+        cls.books = corpus_books()
 
     def test_gen_1_1(self):
         verse = self.books[0]["verses"][0]
