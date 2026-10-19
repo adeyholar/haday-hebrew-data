@@ -97,6 +97,8 @@ def _json_ready(word: dict) -> dict:
     if word.get("review_class"):
         ready.setdefault("review", "join")
         ready["review_class"] = word["review_class"]
+    if word.get("morph_note"):
+        ready["morph_note"] = word["morph_note"]
     return ready
 
 
@@ -140,7 +142,7 @@ def build(out: Path) -> dict:
         create table meta (key text primary key, value text);
         create table book (osis text primary key, ord integer, name_en text, name_he text, section text, uxlc_file text, default_system text);
         create table verse (ref text primary key, book text, chapter integer, verse integer, system text, text_src text, text text, word_count integer, unit_count integer, para_after text, has_sof_pasuq integer, rhythm text, uxlc_status text);
-        create table word (id text primary key, ref text, pos integer, unit integer, surface_src text, surface text, morphemes text, trailer text, consonants text, pointed text, accents text, main_accent text, meteg text, stress text, kq_role text, kq_group text, special text, lemma text, morph_oshb text, oshb_n text, rhythm_path text, rhythm_path_computed text, uxlc text, review text, review_class text);
+        create table word (id text primary key, ref text, pos integer, unit integer, surface_src text, surface text, morphemes text, trailer text, consonants text, pointed text, accents text, main_accent text, meteg text, stress text, kq_role text, kq_group text, special text, lemma text, morph_oshb text, oshb_n text, rhythm_path text, rhythm_path_computed text, uxlc text, review text, review_class text, morph_note text);
         create table word_alt (ref text, host_id text, note_type text, rdg text, review_class text, uncertain integer, opt_in integer);
         create table unit (ref text, unit integer, level text, accent text);
         create table accent (word_id text, ord integer, cp text, name text, role text, kind text, level text, letter_index integer, compound text);
@@ -181,6 +183,7 @@ def build(out: Path) -> dict:
     legarmeh_rows = []
     no_sof = []
     morpheme_fallbacks: list[str] = []
+    postpositive_single = 0
     prose_n = prose_ok = poetic_n = poetic_ok = 0
     for book in books:
         osis = book["osis"]
@@ -199,6 +202,8 @@ def build(out: Path) -> dict:
                     unknown_rows.append((verse["ref"], word["id"], f"U+{cp:04X}"))
                 if word.get("morpheme_fallback"):
                     morpheme_fallbacks.append(word["id"])
+                if word.get("stress") and word["stress"].get("source") == "postpositive-single":
+                    postpositive_single += 1
                 if word.get("stress") and word["stress"].get("source") == "default-ultima":
                     stress_rows.append((verse["ref"], word["id"], word["surface"]))
                 for accent in word.get("accents") or []:
@@ -235,7 +240,7 @@ def build(out: Path) -> dict:
                 ),
             )
             db.executemany(
-                "insert into word values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "insert into word values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     (
                         word["id"],
@@ -263,6 +268,7 @@ def build(out: Path) -> dict:
                         word.get("uxlc"),
                         _review(word),
                         word.get("review_class"),
+                        word.get("morph_note"),
                     )
                     for word in verse["words"]
                 ],
@@ -378,6 +384,7 @@ def build(out: Path) -> dict:
         "uxlc_diffs": len(diffs),
         "unknown_accents": len(unknown_rows),
         "stress_default_ultima": len(stress_rows),
+        "stress_postpositive_single": postpositive_single,
         "no_sof_pasuq": len(no_sof),
     }
     review = {"morpheme_fallbacks": morpheme_fallbacks}

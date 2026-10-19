@@ -219,5 +219,9 @@ def stress_for(surface: str, accents: list[dict], meteg: list[dict], proclitic: 
         if seg is not None:
             return {"letter_index": seg, "syll_from_end": syll_from_end(surface, seg), "source": "segolate"}
     index = nuclei[-1] if nuclei else last_letter
+    if main and main["name"] == "pashta":
+        # A single pashta is postpositive. The Masoretes repeat it on the tone when the tone is not
+        # final, so one pashta alone means final stress by rule, not by guess.
+        return _pack(surface, index, accents, "postpositive-single")
     return _pack(surface, index, accents, "default-ultima")
 

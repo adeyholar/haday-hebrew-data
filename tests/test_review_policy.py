@@ -11,7 +11,7 @@ from builder.canon import canon, clusters, consonants, multiset
 from builder.oshb import NS
 from builder.pins import oshb_dir, triage_path
 from corpus import books as corpus_books
-from builder.overrides import _strip, row_decision
+from builder.overrides import _strip, oshb_convention, row_decision
 from builder.stress import stress_for
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -65,7 +65,8 @@ class ReviewPolicy(unittest.TestCase):
             word = self.words[row["word_id"]]
             uxlc = canon(_strip(row["uxlc"]))
             if how == "override":
-                self.assertEqual(word["surface"], uxlc, row["ref"])
+                # UXLC's repeated pashta is written in OSHB's form (qadma on the tone), 8 words.
+                self.assertEqual(word["surface"], canon(oshb_convention(_strip(row["uxlc"]))), row["ref"])
                 self.assertEqual(word["review_class"], "wlc_error", row["ref"])
                 continue
             # Uncertain and optional rows never reach the main text.
