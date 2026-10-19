@@ -121,9 +121,20 @@ def _join_clusters(parts: list[tuple[str, list[str]]]) -> str:
     return "".join(letter + "".join(marks) for letter, marks in parts)
 
 
+PASHTA = "\u0599"
+QADMA = "\u05a8"
+
+
+def oshb_convention(text: str) -> str:
+    """UXLC repeats pashta on the tone letter; OSHB writes that first one as qadma. Use OSHB's form."""
+    if text.count(PASHTA) >= 2:
+        return text.replace(PASHTA, QADMA, 1)
+    return text
+
+
 def _paint(word: dict, text: str, row: dict) -> None:
     word.setdefault("morphemes_src", list(word.get("morphemes") or []))
-    word["surface"] = canon(_strip(text))
+    word["surface"] = canon(oshb_convention(_strip(text)))
     word["consonants"] = consonants(word["surface"])
     word["pointed"] = pointed(word["surface"])
     word["override"] = {
@@ -180,18 +191,30 @@ def _align(words: list[dict], theirs: list[dict]) -> list[tuple] | None:
     return ops
 
 
+def _join_lemma(left: str, right: str) -> str:
+    return "/".join(part for part in (left, right) if part)
+
+
+def _join_morph(left: str, right: str) -> str:
+    """OSHB morph is a language letter, then segments split by '/': HC/Vqw3ms + HNcmsa -> HC/Vqw3ms/Ncmsa."""
+    if not left or not right:
+        return left or right
+    return left + "/" + (right[1:] if right[:1] in ("H", "A") else right)
+
+
 def _merge(a: dict, b: dict, text: str, row: dict) -> dict:
     word = {
         "id": a["id"],
         "surface_src": a["surface_src"] + b["surface_src"],
-        "surface": canon(_strip(text)),
+        "surface": canon(oshb_convention(_strip(text))),
         "morphemes": list(a.get("morphemes") or []) + list(b.get("morphemes") or []),
         "trailers": list(b.get("trailers") or []),
         "trailer": b.get("trailer") or "",
         "consonants": "",
         "pointed": "",
-        "lemma": a.get("lemma") or b.get("lemma") or "",
-        "morph_oshb": a.get("morph_oshb") or "",
+        "lemma": _join_lemma(a.get("lemma") or "", b.get("lemma") or ""),
+        "morph_oshb": _join_morph(a.get("morph_oshb") or "", b.get("morph_oshb") or ""),
+        "morph_note": f"merged {a['id']}+{b['id']}: lemma and morph joined from both OSHB words",
         "oshb_n": b.get("oshb_n") or a.get("oshb_n") or "",
         "kq_role": a.get("kq_role"),
         "kq_group": a.get("kq_group"),
@@ -220,7 +243,7 @@ def _split(word: dict, left: str, right: str, row: dict) -> tuple[dict, dict]:
     cut = len(consonants(_strip(left)))
     first = dict(word)
     first["surface_src"] = _join_clusters(parts[:cut])
-    first["surface"] = canon(_strip(left))
+    first["surface"] = canon(oshb_convention(_strip(left)))
     first["trailers"] = [" "]
     first["trailer"] = " "
     left_parts, right_parts = _cut_parts(list(word.get("morphemes_src") or word.get("morphemes") or []), cut)
@@ -235,14 +258,18 @@ def _split(word: dict, left: str, right: str, row: dict) -> tuple[dict, dict]:
     second = dict(word)
     second["id"] = word["id"] + "b"
     second["surface_src"] = _join_clusters(parts[cut:])
-    second["surface"] = canon(_strip(right))
+    second["surface"] = canon(oshb_convention(_strip(right)))
     second["trailers"] = list(word.get("trailers") or [])
     second["trailer"] = word.get("trailer") or ""
     second["morphemes_src"] = right_parts
     second["morphemes"] = list(right_parts)
     second["review_class"] = "word_division"
-    second["lemma"] = ""
-    second["morph_oshb"] = ""
+    # One OSHB word (a proper name in both cases) that L writes as two: both halves carry its analysis.
+    note = f"split from {word['id']}: one OSHB word written as two in L; both halves carry its lemma and morph"
+    first["morph_note"] = note
+    second["morph_note"] = note
+    second["lemma"] = word.get("lemma") or ""
+    second["morph_oshb"] = word.get("morph_oshb") or ""
     second["special"] = []
     second["alternatives"] = []
     second["qere_words"] = []

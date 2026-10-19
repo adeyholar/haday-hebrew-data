@@ -10,7 +10,7 @@ from builder.canon import canon  # noqa: E402
 from builder.pins import pin  # noqa: E402
 
 SOF = "\u05c3"
-WORD_FIELDS = ("surface", "trailer", "morphemes", "main_accent", "stress", "review", "review_class", "kq_role")
+WORD_FIELDS = ("surface", "trailer", "morphemes", "main_accent", "stress", "review", "review_class", "kq_role", "lemma", "morph_note")
 
 
 def _db_word(row: sqlite3.Row) -> dict:
@@ -23,6 +23,9 @@ def _db_word(row: sqlite3.Row) -> dict:
         "review": row["review"],
         "review_class": row["review_class"],
         "kq_role": row["kq_role"],
+        "lemma": row["lemma"] or "",
+        "morph": row["morph_oshb"] or "",
+        "morph_note": row["morph_note"],
         "accents": [{k: v for k, v in a.items() if k != "name_he"} for a in json.loads(row["accents"])],
     }
 
@@ -30,6 +33,8 @@ def _db_word(row: sqlite3.Row) -> dict:
 def _json_word(word: dict) -> dict:
     out = {field: word.get(field) for field in WORD_FIELDS}
     out["review"] = out["review"] or None
+    out["lemma"] = out["lemma"] or ""
+    out["morph"] = word.get("morph") or ""
     out["accents"] = word.get("accents") or []
     return out
 
@@ -47,6 +52,9 @@ def main(out: Path) -> None:
     diffs = db.execute("select count(*) from uxlc_diff").fetchone()[0]
     if verses != 23213 or words != 306779 or qere != 1278:
         raise SystemExit(f"counts verses={verses} words={words} qere={qere}")
+    unanalysed = db.execute("select id from word where kq_role is not 'qere' and (lemma = '' or morph_oshb = '')").fetchall()
+    if unanalysed:
+        raise SystemExit(f"words with no lemma or morph: {[row[0] for row in unanalysed][:10]}")
     if len(no_sof) != 21 or diffs != 44:
         raise SystemExit(f"no_sof={len(no_sof)} uxlc={diffs}")
 

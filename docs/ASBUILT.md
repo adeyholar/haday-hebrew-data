@@ -4,9 +4,9 @@ Living picture of **what this dataset is today**. Not the class site. Not a wish
 
 | | |
 |---|---|
-| **Snapshot** | 18 October 2026, after the Dev Desk v1.1.2 fixes (Re-review 6) |
-| **Repo** | https://github.com/adeyholar/haday-hebrew-data (`main`). Dataset version **1.1.3**. |
-| **Release** | v1.0.0 was the first cut. v1.1.0 was the first review fix. v1.1.1 is the poetic rhythm, stress, and trailer fix. v1.1.2 applies the signed UXLC triage, layered by class. v1.1.3 pins the triage and checks every source hash before a build, with no data change. Nothing on the class site reads this build yet (see the next row). |
+| **Snapshot** | 18 October 2026, v1.2.0 (Claude v1.1.2 review implemented by Dev Desk) |
+| **Repo** | https://github.com/adeyholar/haday-hebrew-data (`main`). Dataset version **1.2.0**. |
+| **Release** | v1.0.0 was the first cut. v1.1.0 was the first review fix. v1.1.1 is the poetic rhythm, stress, and trailer fix. v1.1.2 applies the signed UXLC triage, layered by class. v1.1.3 pins the triage and checks every source hash before a build, with no data change. v1.2.0 labels single-pashta stress, writes corrected words in OSHB's pashta form, and fills the morphology of split and merged words. Nothing on the class site reads this build yet (see the next row). |
 | **Spec** | https://app.notion.com/p/3fd058f607b1816e8bcbde360c1a546d |
 | **Class site** | Not wired. https://hebrewmentor.haday.app still reads `public/tanakh/books/*.json`, which drops the accents. |
 | **BHSA** | Off. Do not turn it on without the license note in the spec. |
@@ -67,7 +67,8 @@ SQLite table `word`. Indexes: `word(ref, pos)`, `word(lemma)`, `word(consonants)
 | `accents` | Each te‘am, with its name, level, and the consonant it sits on (`letter_index`, counting from 0). |
 | `meteg` | Each U+05BD. On the last word of the verse the rightmost one is `silluq`. The others are `meteg`. |
 | `stress` | `{letter_index, syll_from_end, source}`. Empty on a word that is only leaning on the next word through a maqaf. |
-| `lemma`, `morph` | OSHB. SQLite calls the morph column `morph_oshb`. |
+| `lemma`, `morph` | OSHB. SQLite calls the morph column `morph_oshb`. Every main word has both. |
+| `morph_note` | Set only where the L word division changed OSHB's words. A merged word joins both OSHB analyses, so וַיִּחַר + אַף is `c/2734/639`, `HC/Vqw3ms/Ta`, note `merged 04xji+04AfZ`. A split word (כְּדָר / לָעֹמֶר in Gen 14:17, עֲשָׂה / אֵל in 2 Sam 3:30) is one OSHB proper name: both halves carry its lemma and morph, note `split from …`. |
 | `rhythm_path` | OSHB’s `n` path when OSHB wrote one. Otherwise the path this builder computed. |
 | `kq_role` | Empty, `ketiv`, or `qere`. |
 
@@ -99,6 +100,8 @@ OSHB writes a doubled pashta as qadma on the stressed letter and pashta on the l
 | Qere words | 1,278 |
 | Verses with sof pasuq | 23,192 (21 verses have none) |
 | Unknown accent code points | 0 |
+| Stress `postpositive-single` | 14,473 (one pashta: final stress by rule) |
+| Stress review queue (`default-ultima`) | 8,820 (23,293 before v1.2.0). By main accent: dechi 2,474, telisha qetana 1,833, yetiv 1,177, telisha gedola 1,117, zarqa 932, segolta 909, tsinnor 243, geresh muqdam 78, none 55, geresh 2 |
 
 The spec’s arithmetic “306,774 words” does not add up (305,507 + 1,278 = 306,785). Trust the pin. The code-point totals in `tests/expected-histogram.json` are the pin, not the rounded figures in the spec.
 
@@ -124,7 +127,7 @@ A word whose only accent is prepositive (pashta, telisha gedola, dechi, geresh m
 
 ## Stress and the other reports
 
-`build-report/stress-review.csv` lists words whose stress fell back to the last syllable (`default-ultima`). Re-read it from the v1.1.0 build. The v1.0.0 count of 24,363 was wrong because וֹ and וּ were counted as their own syllables.
+`build-report/stress-review.csv` lists words whose stress fell back to the last syllable (`default-ultima`): 8,820 in v1.2.0. A word whose only accent is a single pashta is not in it. Pashta is postpositive, and the Masoretes repeat it on the tone when the tone is not final, so one pashta means final stress by rule; those 14,473 words have source `postpositive-single`. Re-read the queue from the v1.2.0 build. The v1.0.0 count of 24,363 was wrong because וֹ and וּ were counted as their own syllables.
 
 `build-report/legarmeh.csv` lists every munach, and in poetry every mehuppakh or azla, that is followed by paseq.
 
@@ -135,9 +138,13 @@ A word whose only accent is prepositive (pashta, telisha gedola, dechi, geresh m
 | WLC error | 567 | `surface` is the UXLC reading. `review_class` is `wlc_error`. |
 | Real unresolved (L uncertain) | 146 | Main text stays OSHB. The UXLC reading is a `word_alt` row, `note_type` `uxlc_uncertain`, `uncertain` 1. |
 | Editorial, diplomatic layer | 98 | Main text stays OSHB. The UXLC reading is a `word_alt` row, `note_type` `uxlc_diplomatic`, `opt_in` 1. An app shows it only if the reader asks. |
-| Word division (L) | 10 | Two words become one or one becomes two. `review_class` is `word_division`. |
+| Word division (L) | 10 | Two words become one or one becomes two. `review_class` is `word_division`. `decision` is `divide`. |
 | OSHB exegesis split | 6 | Both words stay. The space the builder used to insert is dropped. `review_class` is `exegesis_join`. |
 | Word division, L uncertain | 1 | Ezra 3:5 is not merged. It keeps the two OSHB words, with no space between them because OSHB writes none. |
+
+**The word-division exception.** These 10 rows are classed "Known WLC/UXLC editorial difference", yet they change the main text, while every other editorial row (98) is an opt-in `uxlc_diplomatic` alternative. That is deliberate. A word division changes how many words the verse has and where the maqaf and the units fall, so it cannot be carried as an alternative reading of one word. UXLC records each one as a correction of WLC 4.20 to what L writes. The rows carry `decision` = `divide`, which is the only thing the builder reads. The one division UXLC itself marks uncertain (Ezra 3:5) has `decision` = `uncertain` and is not applied. The Notion build spec has no rule on word division, so this paragraph is the rule.
+
+**One pashta convention.** UXLC writes a repeated pashta as two pashtas. OSHB writes the first as qadma (U+05A8) on the tone letter and the second as pashta on the last letter. When a correction is applied, the builder converts UXLC's form to OSHB's (8 words, for example Lev 13:3 הַנֶּ֨גֶע֙). No word in `surface` has two U+0599 marks. `word_alt` readings stay as UXLC writes them.
 
 `surface_src` and `verse.text_src` are always the OSHB characters and the OSHB word division. Only `surface` and `verse.text` change. Galgal is `galgal` and conjunctive in both systems: U+05AA in prose, U+05A2 in poetry. U+05AA and U+05A2 compare as the same mark. A double accentuation stays on `word_alt` and is not a diff. Rows marked none or document are not changed. The diff report should be 44 rows (Gen 14:17 אַחֲרֵ֣י is listed now, because the builder no longer repaints a word the triage did not sign). Do not overwrite `surface_src` to hide the OSHB pin.
 
