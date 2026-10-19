@@ -7,6 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from builder.canon import canon  # noqa: E402
+from builder.pins import pin  # noqa: E402
 
 SOF = "\u05c3"
 WORD_FIELDS = ("surface", "trailer", "morphemes", "main_accent", "stress", "review", "review_class", "kq_role")
@@ -37,7 +38,7 @@ def main(out: Path) -> None:
     db = sqlite3.connect(out / "hebrew-bible.sqlite")
     db.row_factory = sqlite3.Row
     version = db.execute("select value from meta where key = 'dataset_version'").fetchone()[0]
-    if version != "1.1.3":
+    if version != pin("DATASET_VERSION"):
         raise SystemExit(f"dataset_version {version}")
     verses = db.execute("select count(*) from verse").fetchone()[0]
     words = db.execute("select count(*) from word").fetchone()[0]
@@ -49,6 +50,9 @@ def main(out: Path) -> None:
     if len(no_sof) != 21 or diffs != 44:
         raise SystemExit(f"no_sof={len(no_sof)} uxlc={diffs}")
 
+    indexes = {row[0] for row in db.execute("select name from sqlite_master where type = 'index'")}
+    if not {"accent_word", "word_alt_host", "unit_ref"} <= indexes:
+        raise SystemExit(f"missing indexes: {sorted(indexes)}")
     db_words = {row["id"]: row for row in db.execute("select * from word")}
     db_verses = {row["ref"]: row for row in db.execute("select * from verse")}
     db_alts: dict[str, list] = {}

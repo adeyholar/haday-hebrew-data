@@ -8,8 +8,4 @@ The text was cross-checked against the Unicode/XML Leningrad Codex, UXLC 2.6 (27
 
 This dataset does not include the BHS critical apparatus, the Masorah, or any file derived from a BHS scan. Those remain with the Deutsche Bibelgesellschaft.
 
-The builder code in this repository is released under the MIT license:
-
-Copyright 2026 HaDay
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files, to deal in the software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the software, and to permit persons to whom the software is furnished to do so, subject to the above notices for the data.
+The builder code in this repository (`builder/`, `packages/`, `tests/`, `.github/`) is released under the MIT license. The full text is in `LICENSE`. The license terms above, not the MIT license, govern the data.

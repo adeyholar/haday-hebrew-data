@@ -1,0 +1,54 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Tag matches the dataset version and is not behind main
+        run: |
+          version="$(sed -n 's/^DATASET_VERSION=//p' sources/PINS.txt)"
+          test "$GITHUB_REF_NAME" = "v$version" || { echo "tag $GITHUB_REF_NAME but PINS.txt says $version"; exit 1; }
+          git fetch origin main
+          git merge-base --is-ancestor origin/main "$GITHUB_SHA" || { echo "tagged commit is behind main"; exit 1; }
+      - name: Pinned sources
+        run: cd sources && sha256sum -c SHA256SUMS
+      - name: Tests
+        run: python -m unittest discover -s tests
+      - name: Build the dataset
+        run: |
+          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          python -m builder.build --out dist
+      - name: Built SQLite matches the chapter JSON
+        run: python tests/check_dist.py dist
+      - name: canon.ts matches canon.py on the whole corpus
+        run: |
+          python tests/canon_parity.py dist "$RUNNER_TEMP/canon-parity.json"
+          node --experimental-strip-types packages/canon/parity.ts "$RUNNER_TEMP/canon-parity.json"
+      - name: Package
+        run: |
+          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          scripts/package.sh dist release
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="docs/releases/$GITHUB_REF_NAME.md"
+          test -f "$notes" || { echo "missing $notes"; exit 1; }
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" release/* --verify-tag --title "$GITHUB_REF_NAME" --notes-file "$notes"
+          fi

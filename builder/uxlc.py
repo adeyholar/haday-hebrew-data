@@ -7,6 +7,7 @@ from pathlib import Path
 
 from builder.books import BOOKS
 from builder.canon import ACCENTS, MAQAF, PASEQ, SOF, canon, consonants
+from builder.pins import triage_path
 
 TRAIL = (MAQAF, PASEQ, SOF, " ")
 CGJ = "\u034F"
@@ -48,7 +49,7 @@ def compare_form(text: str) -> str:
     UXLC inserts CGJ. OSHB writes a doubled pashta as qadma + pashta; UXLC writes two pashtas.
     """
     text = text.replace(CGJ, "").replace("\u200d", "").replace("\u200c", "")
-    # OSHB prose atnach hafukh is U+05AA. UXLC writes U+05A2. Comparison only.
+    # Galgal: OSHB writes U+05AA, UXLC writes U+05A2 (see builder/accents.py). Comparison only.
     text = text.replace("\u05AA", "\u05A2")
     if PASHTA in text and QADMA in text:
         text = text.replace(QADMA, PASHTA)
@@ -186,7 +187,7 @@ def _explained(root: Path | None = None) -> set[tuple[str, str]]:
     """Word ids the signed review says are the same mark, or already stored on word_alt."""
     from builder.overrides import row_decision
 
-    path = root or Path(__file__).resolve().parents[1] / "sources" / "uxlc-triage-v1.1.1.csv"
+    path = root or triage_path()
     if not path.exists():
         return set()
     found: set[tuple[str, str]] = set()

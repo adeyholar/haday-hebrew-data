@@ -6,6 +6,8 @@ from pathlib import Path
 from builder.accents import HEBREW, classify_word
 from builder.books import BOOKS, verse_system
 from builder.canon import MAQAF, PASEQ, SOF, canon, consonants, multiset, pointed
+from builder.errors import MarkError
+from builder.pins import oshb_dir, triage_path
 from builder.rhythm import build_tree, division_paths, poetic_paths
 from builder.stress import stress_for
 
@@ -39,13 +41,15 @@ def _word_from(el: ET.Element) -> dict:
         special.append("lower_dot")
     # Morphemes carry the same canonical mark order as the surface, so they join back to it.
     morphemes = [canon(part) for part in parts]
-    if "".join(morphemes) != surface:
+    fallback = "".join(morphemes) != surface
+    if fallback:
         morphemes = [surface]
     return {
         "id": el.get("id") or "",
         "surface_src": surface_src,
         "surface": surface,
         "morphemes": morphemes,
+        "morpheme_fallback": fallback,
         "trailers": [],
         "trailer": "",
         "consonants": consonants(surface),
@@ -328,12 +332,12 @@ def _analyze(reading: list[dict], system: str, has_sof: bool) -> None:
         word["stress"] = stress_for(word["surface"], word["accents"], word["meteg"], proclitic)
         if word.get("override"):
             if canon(word["surface"]) != word["surface"]:
-                raise SystemExit(f"canon not stable {word['id']}")
+                raise MarkError(f"canon not stable {word['id']}")
         else:
             if multiset(word["surface"]) != multiset(word["surface_src"]):
-                raise SystemExit(f"mark mismatch {word['id']}")
+                raise MarkError(f"mark mismatch {word['id']}")
             if canon(word["surface"]) != word["surface"]:
-                raise SystemExit(f"canon not stable {word['id']}")
+                raise MarkError(f"canon not stable {word['id']}")
 
 
 def rebuild_verse(verse: dict) -> None:
@@ -386,12 +390,17 @@ def rebuild_verse(verse: dict) -> None:
     verse["words"] = words
 
 
-def load_oshb(root: Path) -> list[dict]:
+def load_oshb(root: Path | None = None, uxlc: dict | None = None) -> list[dict]:
+    """Parse the pinned OSHB books and apply the signed triage.
+
+    Pass the parsed UXLC (builder.uxlc.load_uxlc) to avoid reading the zip twice in one build.
+    """
+    root = root or oshb_dir()
     books = []
     for osis, _en, _he, _section, _uxlc, _system in BOOKS:
         path = root / f"{osis}.xml"
         books.append({"osis": osis, "verses": parse_book(path, osis)})
     from builder.overrides import apply_review
 
-    apply_review(books, root.parent / "uxlc-triage-v1.1.1.csv", root.parent / "Tanach.xml.zip")
+    apply_review(books, triage_path(), uxlc)
     return books
