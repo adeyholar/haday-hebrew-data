@@ -37,7 +37,7 @@ def main(out: Path) -> None:
     db = sqlite3.connect(out / "hebrew-bible.sqlite")
     db.row_factory = sqlite3.Row
     version = db.execute("select value from meta where key = 'dataset_version'").fetchone()[0]
-    if version != "1.1.2":
+    if version != "1.1.3":
         raise SystemExit(f"dataset_version {version}")
     verses = db.execute("select count(*) from verse").fetchone()[0]
     words = db.execute("select count(*) from word").fetchone()[0]

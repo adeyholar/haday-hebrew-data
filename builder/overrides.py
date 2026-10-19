@@ -11,7 +11,8 @@ The triage is layered by class (Re-review 6):
 
 A row marked none or document is not changed. A comparison-only row is not changed.
 Every changed word carries review_class. text_src is never touched: it stays OSHB.
-The patch file is sources/uxlc-triage-v1.1.1.csv.
+The patch file is sources/uxlc-triage-v1.1.1.csv. Its `decision` column is the only policy input;
+the class and recommended_action columns are prose for people. An unknown decision stops the build.
 """
 
 import csv
@@ -37,36 +38,28 @@ CLASS_KEY = {
 }
 
 
-def decision(action: str, klass: str | None = None) -> str:
-    """What the builder does with one triage row.
+DECISIONS = ("override", "uncertain", "optional", "divide", "join", "compare", "leave")
 
-    override  -> paint UXLC onto surface (WLC errors only)
+
+class TriageError(ValueError):
+    """The triage CSV cannot be applied as written."""
+
+
+def row_decision(row: dict) -> str:
+    """What the builder does with one triage row. Read from the explicit `decision` column only.
+
+    override  -> paint UXLC onto surface (WLC errors)
     uncertain -> alternative, flagged uncertain, never on surface
     optional  -> opt-in alternative, never on surface
-    divide    -> word division per UXLC
+    divide    -> word division per UXLC (L)
     join      -> exegesis split written with no space
     compare   -> comparison only
     leave     -> nothing
     """
-    if action.startswith("normalize"):
-        return "compare"
-    if "word division" in action:
-        return "uncertain" if klass == UNCERTAIN else "divide"
-    if action.startswith("builder fix"):
-        return "join"
-    if action.startswith("documented override"):
-        if klass == UNCERTAIN or "with flag" in action:
-            return "uncertain"
-        if klass == EDITORIAL or "optional" in action:
-            return "optional"
-        if klass is not None and klass != WLC_ERROR:
-            return "leave"
-        return "override"
-    return "leave"
-
-
-def row_decision(row: dict) -> str:
-    return decision(row["recommended_action"], row.get("class"))
+    value = (row.get("decision") or "").strip()
+    if value not in DECISIONS:
+        raise TriageError(f"unknown triage decision {value!r} at {row.get('ref')} {row.get('word_id')}")
+    return value
 
 
 def class_key(row: dict) -> str:

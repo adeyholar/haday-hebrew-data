@@ -5,8 +5,8 @@ Living picture of **what this dataset is today**. Not the class site. Not a wish
 | | |
 |---|---|
 | **Snapshot** | 18 October 2026, after the Dev Desk v1.1.2 fixes (Re-review 6) |
-| **Repo** | https://github.com/adeyholar/haday-hebrew-data (`main`). Dataset version **1.1.2**. |
-| **Release** | v1.0.0 was the first cut. v1.1.0 was the first review fix. v1.1.1 is the poetic rhythm, stress, and trailer fix. v1.1.2 applies the signed UXLC triage, layered by class. Nothing on the class site reads this build yet (see the next row). |
+| **Repo** | https://github.com/adeyholar/haday-hebrew-data (`main`). Dataset version **1.1.3**. |
+| **Release** | v1.0.0 was the first cut. v1.1.0 was the first review fix. v1.1.1 is the poetic rhythm, stress, and trailer fix. v1.1.2 applies the signed UXLC triage, layered by class. v1.1.3 pins the triage and checks every source hash before a build, with no data change. Nothing on the class site reads this build yet (see the next row). |
 | **Spec** | https://app.notion.com/p/3fd058f607b1816e8bcbde360c1a546d |
 | **Class site** | Not wired. https://hebrewmentor.haday.app still reads `public/tanakh/books/*.json`, which drops the accents. |
 | **BHSA** | Off. Do not turn it on without the license note in the spec. |
@@ -28,7 +28,7 @@ The BHS scan on the Chairman’s PC was not opened, not copied, and not used. Th
 | Text, word ids, lemma, morphology, accent paths | OSHB `morphhb` commit `3d15126fb1ef74867fc1434be1942e837932691f` | `sources/morphhb-wlc/*.xml` |
 | Cross-check only | UXLC 2.6, build 27.7, zip SHA-256 `423469bdcc4bfe36d7666f8e76fbd02c1674d77469093c06cee9779c0fba83e3` | `sources/Tanach.xml.zip` |
 
-Hashes are in `sources/SHA256SUMS`. A new UXLC build is a deliberate re-pin, then every test again. Do not call the UXLC text “WLC”.
+Hashes are in `sources/SHA256SUMS`, including the signed triage `sources/uxlc-triage-v1.1.1.csv`. `python -m builder.build` checks every file against it before it reads anything, and stops if a file is changed, missing, or not listed. `.gitattributes` marks `sources/** -text`, so a Windows checkout with `core.autocrlf` does not rewrite the XML or CSV line endings. A new UXLC build or a triage edit is a deliberate re-pin, then every test again. Do not call the UXLC text “WLC”.
 
 ## How to rebuild
 
@@ -119,7 +119,7 @@ A word whose only accent is prepositive (pashta, telisha gedola, dechi, geresh m
 
 `build-report/legarmeh.csv` lists every munach, and in poetry every mehuppakh or azla, that is followed by paseq.
 
-`build-report/uxlc-diff.csv` is what the signed triage did not change. v1.1.2 applies `sources/uxlc-triage-v1.1.1.csv` by class:
+`build-report/uxlc-diff.csv` is what the signed triage did not change. The builder applies `sources/uxlc-triage-v1.1.1.csv` from its `decision` column only (`override`, `uncertain`, `optional`, `divide`, `join`, `compare`, `leave`). The `class` and `recommended_action` columns are for people; rewording them changes nothing. Any other decision value stops the build. By class:
 
 | Triage class | Rows | What the build does |
 |---|---|---|
