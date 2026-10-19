@@ -4,9 +4,9 @@ Living picture of **what this dataset is today**. Not the class site. Not a wish
 
 | | |
 |---|---|
-| **Snapshot** | 18 October 2026, after the Dev Desk review of v1.0.0 |
-| **Repo** | https://github.com/adeyholar/haday-hebrew-data (`main`). Dataset version **1.1.0**. |
-| **Release** | v1.0.0 was the first cut. v1.1.0 was the first review fix. v1.1.1 is the poetic rhythm, stress, and trailer fix. v1.1.2 applies the signed UXLC triage. The Reading Lab on the class site reads the chapter JSON from this build. |
+| **Snapshot** | 18 October 2026, after the Dev Desk v1.1.2 fixes (Re-review 6) |
+| **Repo** | https://github.com/adeyholar/haday-hebrew-data (`main`). Dataset version **1.1.2**. |
+| **Release** | v1.0.0 was the first cut. v1.1.0 was the first review fix. v1.1.1 is the poetic rhythm, stress, and trailer fix. v1.1.2 applies the signed UXLC triage, layered by class. Nothing on the class site reads this build yet (see the next row). |
 | **Spec** | https://app.notion.com/p/3fd058f607b1816e8bcbde360c1a546d |
 | **Class site** | Not wired. https://hebrewmentor.haday.app still reads `public/tanakh/books/*.json`, which drops the accents. |
 | **BHSA** | Off. Do not turn it on without the license note in the spec. |
@@ -43,7 +43,7 @@ No network is required. The pins are already in `sources/`. Do not call Unicode 
 
 ## What a word is
 
-SQLite table `word`. The chapter JSON (`dist/json/<OSIS>/<chapter>.json`) is the slice the app is meant to load. Qere words are in SQLite and not in the chapter JSON.
+SQLite table `word`. The chapter JSON (`dist/json/<OSIS>/<chapter>.json`) is the slice the app is meant to load. Qere words are rows of their own in SQLite. In the chapter JSON they are nested under the ketiv as `qere`.
 
 | Field | What it is |
 |---|---|
@@ -52,7 +52,8 @@ SQLite table `word`. The chapter JSON (`dist/json/<OSIS>/<chapter>.json`) is the
 | `surface` | The same marks, in HaDay order: shin/sin dot, dagesh, rafe, vowel, meteg, accents (accents keep their own order), upper/lower dots. |
 | `pointed` | `surface` without the accents and without meteg. Vowels, dagesh, and shin/sin dots stay. |
 | `consonants` | Letters only. |
-| `morphemes` | The slash pieces, so בראשית is `בְּ` + `רֵאשִׁ֖ית`. |
+| `morphemes` | The slash pieces, so בראשית is `בְּ` + `רֵאשִׁ֖ית`. They are in the same mark order as `surface` and join back to it exactly. On a reviewed word they are cut from the final `surface` at the OSHB morpheme boundaries. |
+| `review`, `review_class` | Set only on a word the signed triage changed. `review_class` is `wlc_error`, `word_division`, `exegesis_join`, or `oshb_convention`. |
 | `trailer` | What follows the word: a space, maqaf `־`, paseq `׀`, sof pasuq `׃`, or nothing. |
 | `accents` | Each te‘am, with its name, level, and the consonant it sits on (`letter_index`, counting from 0). |
 | `meteg` | Each U+05BD. On the last word of the verse the rightmost one is `silluq`. The others are `meteg`. |
@@ -85,7 +86,7 @@ OSHB writes a doubled pashta as qadma on the stressed letter and pashta on the l
 |---|---|
 | Books | 39, Hebrew canon order |
 | Verses | 23,213 |
-| Main words | 305,507 |
+| Main words | 305,501 (305,507 in v1.1.1, before the L word divisions) |
 | Qere words | 1,278 |
 | Verses with sof pasuq | 23,192 (21 verses have none) |
 | Unknown accent code points | 0 |
@@ -96,7 +97,7 @@ Nine qere words have no ketiv in front of them (OSHB calls them adaptations). Th
 
 ## Rhythm
 
-Prose agrees with OSHB’s `n` on **99.69%** of verses (18,689 / 18,748). That clears the 98% bar. Genesis stays inside that bar. Poetry (Psalms, Proverbs, Job) agrees on **96.2%** (4,296 / 4,465). That clears the 95% bar. The poetic path follows Wickes as recorded in the OSHB accent catalog: the rightmost disjunctive in a domain is the near divider, a stronger one to its left is the remote divider, and a weaker one nests under the near divider. With no atnach, a revia gadol takes number 1 and ole veyored stays 2. With neither, ole veyored takes 1. A merkha after a word that already holds both ole and yored is not a second ole veyored.
+Prose agrees with OSHB’s `n` on **99.38%** of verses (18,632 / 18,748). That clears the 98% bar. Genesis stays inside that bar. Poetry (Psalms, Proverbs, Job) agrees on **95.9%** (4,282 / 4,465). That clears the 95% bar. Psalms is 94.3%. Every verse that agrees less than in v1.1.1 holds a WLC-error correction: OSHB’s `n` was written for the WLC accents, so it no longer describes the corrected word. On the verses the review did not touch, the figures are the v1.1.1 ones exactly (prose 99.80%, poetry 96.36%, Psalms 94.95%). The poetic path follows Wickes as recorded in the OSHB accent catalog: the rightmost disjunctive in a domain is the near divider, a stronger one to its left is the remote divider, and a weaker one nests under the near divider. With no atnach, a revia gadol takes number 1 and ole veyored stays 2. With neither, ole veyored takes 1. A merkha after a word that already holds both ole and yored is not a second ole veyored.
 
 A ketiv is read from its qere for accents, stress, and the pause tree. The written consonants stay the ketiv. Where they disagree with OSHB, `rhythm_path` stays OSHB’s value. The computed path is `rhythm_path_computed` in SQLite. Every miss is in `build-report/rhythm-mismatch.csv`.
 
@@ -108,7 +109,9 @@ A verse with sof pasuq names silluq as its governor. If that last word has no U+
 
 ## Stress
 
-Holam male (וֹ) and shureq (וּ) belong to the consonant before the vav. אוֹר, טוֹב, תְּהוֹם, and רוּחַ are one syllable from the end when the accent is on that consonant. A meteg on shewa is not the tone. A prepositive mark (dechi, telisha gedola, geresh muqdam) is not the tone. Yetiv is, because its tone is the first syllable. A silent aleph is not a syllable of its own.
+Holam male (וֹ) and shureq (וּ) belong to the consonant before the vav. אוֹר, טוֹב, תְּהוֹם, and רוּחַ are one syllable from the end when the accent is on that consonant. A meteg on shewa is not the tone. A prepositive mark (dechi, telisha gedola, geresh muqdam) is not the tone. Yetiv is, because its tone is the first syllable. A silent aleph is not a syllable of its own. When an aleph has no vowel and the letter before it has none either, that letter owns a following וּ or וֹ, so יְראוּ is one syllable.
+
+A word whose only accent is prepositive (pashta, telisha gedola, dechi, geresh muqdam) has no tone mark. If it is a segolate (closed last syllable, segol or a guttural patach after segol, tsere, holam, qamats, or patach), the stress is the penult and the source is `segolate`. אֶ֝בֶן in Prov 26:27 is two from the end. A dagesh in the last onset, a final ה or י, and the -כֶם/-הֶם suffixes are not segolates. Anything else still falls back to `default-ultima`.
 
 ## Stress and the other reports
 
@@ -116,7 +119,18 @@ Holam male (וֹ) and shureq (וּ) belong to the consonant before the vav. או
 
 `build-report/legarmeh.csv` lists every munach, and in poetry every mehuppakh or azla, that is followed by paseq.
 
-`build-report/uxlc-diff.csv` is what the signed triage did not change. v1.1.2 applies `sources/uxlc-triage-v1.1.1.csv`. Where the review says UXLC is right, including an uncertain note or the diplomatic layer, `surface` is that reading and `surface_src` stays the OSHB characters. A word division follows L, so two words become one or one becomes two. An exegesis split keeps both words and drops the space the builder used to insert. Galgal U+05AA in prose is named atnach hafukh. It stays conjunctive. U+05AA and U+05A2 compare as the same mark. A double accentuation stays on `word_alt` and is not a diff. Rows marked none or document are not changed. The diff report should be 43 rows. Do not overwrite `surface_src` to hide the OSHB pin.
+`build-report/uxlc-diff.csv` is what the signed triage did not change. v1.1.2 applies `sources/uxlc-triage-v1.1.1.csv` by class:
+
+| Triage class | Rows | What the build does |
+|---|---|---|
+| WLC error | 567 | `surface` is the UXLC reading. `review_class` is `wlc_error`. |
+| Real unresolved (L uncertain) | 146 | Main text stays OSHB. The UXLC reading is a `word_alt` row, `note_type` `uxlc_uncertain`, `uncertain` 1. |
+| Editorial, diplomatic layer | 98 | Main text stays OSHB. The UXLC reading is a `word_alt` row, `note_type` `uxlc_diplomatic`, `opt_in` 1. An app shows it only if the reader asks. |
+| Word division (L) | 10 | Two words become one or one becomes two. `review_class` is `word_division`. |
+| OSHB exegesis split | 6 | Both words stay. The space the builder used to insert is dropped. `review_class` is `exegesis_join`. |
+| Word division, L uncertain | 1 | Ezra 3:5 is not merged. It keeps the two OSHB words, with no space between them because OSHB writes none. |
+
+`surface_src` and `verse.text_src` are always the OSHB characters and the OSHB word division. Only `surface` and `verse.text` change. Galgal is `galgal` and conjunctive in both systems: U+05AA in prose, U+05A2 in poetry. U+05AA and U+05A2 compare as the same mark. A double accentuation stays on `word_alt` and is not a diff. Rows marked none or document are not changed. The diff report should be 44 rows (Gen 14:17 אַחֲרֵ֣י is listed now, because the builder no longer repaints a word the triage did not sign). Do not overwrite `surface_src` to hide the OSHB pin.
 
 `build-report/accent-unknown.csv` is empty.
 
@@ -147,10 +161,12 @@ Do not replace the Tanakh JSON in the app by copying `surface` over the old file
 | `builder/stress.py` | Which consonant is stressed, and `syll_from_end`. |
 | `builder/oshb.py` | OSIS reader, ketiv/qere, units, maqaf chains. |
 | `builder/uxlc.py` | Verse and word alignment. Report only. Comparison treats U+05AA as U+05A2, and a `word_alt` row as already stored. |
-| `builder/overrides.py` | Applies `sources/uxlc-triage-v1.1.1.csv` onto `surface`. |
+| `builder/overrides.py` | Applies `sources/uxlc-triage-v1.1.1.csv` by class: corrections onto `surface`, uncertain and diplomatic readings onto `word_alt`. |
 | `builder/build.py` | SQLite, chapter JSON, manifest, reports. |
 | `builder/books.py` | The 39 books in Tanakh order, and which Job verses are prose. |
 | `tests/test_accept.py` | Genesis 1:1, the five stress words, the word counts, Genesis rhythm ≥ 98%. |
+| `tests/test_review_policy.py` | The triage class policy, morphemes against surface, `text_src` against the OSHB XML for every verse, the word-division spaces, galgal, and the segolate and aleph stress words. |
+| `tests/check_dist.py` | Every chapter JSON against SQLite, word by word, and the words rebuilding each verse. |
 | `packages/canon/canon.ts` | The same mark order, for the app later. Not imported by the class site. |
 
 Job 3:2–42:6 is poetic. Job 1:1–3:1 and Job 42:7–17 are prose. Psalms and Proverbs are poetic. Everything else is prose.

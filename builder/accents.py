@@ -21,7 +21,8 @@ PROSE: dict[int, tuple[str, str, int | str, str]] = {
     0x059F: ("pazer_gadol", "D", 3, "imp"),
     0x05A0: ("telisha_gedola", "D", 3, "pre"),
     0x05A1: ("pazer", "D", 3, "imp"),
-    0x05A2: ("atnach_hafukh", "D", 3, "imp"),
+    # UXLC writes galgal (yerah ben yomo) as U+05A2 where OSHB writes U+05AA. Same mark: conjunctive galgal.
+    0x05A2: ("galgal", "C", "C", "imp"),
     0x05A3: ("munach", "C", "C", "imp"),
     0x05A4: ("mahpakh", "C", "C", "imp"),
     0x05A5: ("merkha", "C", "C", "imp"),
@@ -29,8 +30,8 @@ PROSE: dict[int, tuple[str, str, int | str, str]] = {
     0x05A7: ("darga", "C", "C", "imp"),
     0x05A8: ("qadma", "C", "C", "imp"),
     0x05A9: ("telisha_qetana", "C", "C", "post"),
-    # OSHB writes the prose atnach hafukh as U+05AA. UXLC writes U+05A2. Same mark. It stays conjunctive.
-    0x05AA: ("atnach_hafukh", "C", "C", "imp"),
+    # U+05AA is galgal (yerah ben yomo), the conjunctive before pazer gadol (qarne farah). UXLC writes U+05A2.
+    0x05AA: ("galgal", "C", "C", "imp"),
     0x05AB: ("ole", "D", 0, "imp"),
     0x05AC: ("illuy", "C", "C", "imp"),
     0x05AD: ("dechi", "D", 2, "pre"),
@@ -46,7 +47,8 @@ POETIC: dict[int, tuple[str, str, int | str, str]] = {
     0x059C: ("geresh", "D", 3, "imp"),
     0x059D: ("geresh_muqdam", "D", 3, "pre"),
     0x05A1: ("pazer", "D", 2, "imp"),
-    0x05A2: ("atnach_hafukh", "D", 3, "imp"),
+    # UXLC's U+05A2 is OSHB's U+05AA: conjunctive galgal, not a disjunctive.
+    0x05A2: ("galgal", "C", "C", "imp"),
     0x05A3: ("munach", "C", "C", "imp"),
     0x05A4: ("mehuppakh", "C", "C", "imp"),
     0x05A5: ("merkha", "C", "C", "imp"),
@@ -102,7 +104,6 @@ HEBREW = {
     "tsinnorit": "צִנּוֹרִית",
     "mayela": "מָאיְלָא",
     "silluq": "סִלּוּק",
-    "atnach_hafukh": "אֶתְנָח הָפוּךְ",
     "yored": "יוֹרֵד",
 }
 

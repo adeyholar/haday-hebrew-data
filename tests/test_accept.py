@@ -59,7 +59,7 @@ class Accept(unittest.TestCase):
         qere = [word for word in words if word.get("kq_role") == "qere"]
         self.assertEqual(len(self.books), 39)
         self.assertEqual(len(verses), 23213)
-        self.assertEqual(len(main), 305500)
+        self.assertEqual(len(main), 305501)
         self.assertEqual(len(qere), 1278)
         self.assertEqual(sum(1 for verse in verses if verse["has_sof_pasuq"]), 23192)
         self.assertEqual(len({word["id"] for word in words}), len(words))
@@ -259,7 +259,8 @@ class Accept(unittest.TestCase):
                 for word in verse["words"]:
                     for row in word.get("accents") or []:
                         if row.get("cp") == "U+05AA":
-                            self.assertEqual(row["name"], "atnach_hafukh", word["id"])
+                            self.assertEqual(row["name"], "galgal", word["id"])
+                            self.assertEqual(row["kind"], "C", word["id"])
                             named = True
         self.assertTrue(named)
 

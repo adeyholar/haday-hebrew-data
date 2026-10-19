@@ -1,6 +1,16 @@
 """Apply the signed UXLC triage. OSHB stays in surface_src. The reading is surface.
 
+The triage is layered by class (Re-review 6):
+
+- WLC 4.20 transcription errors (UXLC corrected against L): applied to surface by default.
+- Real unresolved cases (L uncertain, UXLC note t): never on surface. Stored as an
+  alternative with note_type "uxlc_uncertain" and uncertain = true.
+- Optional diplomatic rows (UXLC notes c/d/m): never on surface. Stored as an opt-in
+  alternative with note_type "uxlc_diplomatic".
+- Word division and exegesis joins: applied, except a division UXLC itself marks uncertain.
+
 A row marked none or document is not changed. A comparison-only row is not changed.
+Every changed word carries review_class. text_src is never touched: it stays OSHB.
 The patch file is sources/uxlc-triage-v1.1.1.csv.
 """
 
@@ -14,16 +24,88 @@ from builder.uxlc import load_uxlc
 CGJ = "\u034f"
 
 
-def decision(action: str) -> str:
+WLC_ERROR = "WLC 4.20 transcription error inherited by OSHB (UXLC corrected against L)"
+UNCERTAIN = "Real unresolved case (L uncertain)"
+EDITORIAL = "Known WLC/UXLC editorial difference"
+
+CLASS_KEY = {
+    WLC_ERROR: "wlc_error",
+    UNCERTAIN: "l_uncertain",
+    EDITORIAL: "editorial",
+    "UXLC encoding convention": "uxlc_convention",
+    "OSHB encoding convention (no textual difference)": "oshb_convention",
+}
+
+
+def decision(action: str, klass: str | None = None) -> str:
+    """What the builder does with one triage row.
+
+    override  -> paint UXLC onto surface (WLC errors only)
+    uncertain -> alternative, flagged uncertain, never on surface
+    optional  -> opt-in alternative, never on surface
+    divide    -> word division per UXLC
+    join      -> exegesis split written with no space
+    compare   -> comparison only
+    leave     -> nothing
+    """
     if action.startswith("normalize"):
         return "compare"
     if "word division" in action:
-        return "divide"
+        return "uncertain" if klass == UNCERTAIN else "divide"
     if action.startswith("builder fix"):
         return "join"
     if action.startswith("documented override"):
+        if klass == UNCERTAIN or "with flag" in action:
+            return "uncertain"
+        if klass == EDITORIAL or "optional" in action:
+            return "optional"
+        if klass is not None and klass != WLC_ERROR:
+            return "leave"
         return "override"
     return "leave"
+
+
+def row_decision(row: dict) -> str:
+    return decision(row["recommended_action"], row.get("class"))
+
+
+def class_key(row: dict) -> str:
+    return CLASS_KEY.get(row.get("class") or "", "other")
+
+
+def _cut_parts(parts: list[str], cut: int) -> tuple[list[str], list[str]]:
+    """Split morpheme strings after `cut` letters."""
+    left: list[str] = []
+    right: list[str] = []
+    seen = 0
+    for part in parts:
+        groups = clusters(part)
+        if seen >= cut:
+            right.append(part)
+        elif seen + len(groups) <= cut:
+            left.append(part)
+        else:
+            k = cut - seen
+            left.append(_join_clusters(groups[:k]))
+            right.append(_join_clusters(groups[k:]))
+        seen += len(groups)
+    return [p for p in left if p], [p for p in right if p]
+
+
+def resegment(word: dict) -> None:
+    """Morphemes follow the final surface, cut where the OSHB morphemes were cut."""
+    parts = word.get("morphemes_src") or word.get("morphemes") or [word["surface_src"]]
+    sizes = [len(clusters(part)) for part in parts]
+    groups = clusters(word["surface"])
+    if sum(sizes) != len(groups):
+        word["morphemes"] = [word["surface"]]
+        return
+    out: list[str] = []
+    at = 0
+    for size in sizes:
+        out.append(_join_clusters(groups[at : at + size]))
+        at += size
+    word["morphemes"] = out
 
 
 def _strip(text: str) -> str:
@@ -35,14 +117,28 @@ def _join_clusters(parts: list[tuple[str, list[str]]]) -> str:
 
 
 def _paint(word: dict, text: str, row: dict) -> None:
+    word.setdefault("morphemes_src", list(word.get("morphemes") or []))
     word["surface"] = canon(_strip(text))
     word["consonants"] = consonants(word["surface"])
     word["pointed"] = pointed(word["surface"])
     word["override"] = {
-        "action": decision(row["recommended_action"]),
+        "action": row_decision(row),
         "note": row.get("uxlc_notes") or "",
         "verdict": row.get("verdict") or "",
     }
+    word["review_class"] = class_key(row)
+
+
+def _alternative(word: dict, row: dict, how: str) -> None:
+    alt = {
+        "note_type": "uxlc_uncertain" if how == "uncertain" else "uxlc_diplomatic",
+        "rdg": canon(_strip(row["uxlc"])),
+        "review_class": class_key(row),
+        "uncertain": how == "uncertain",
+        "opt_in": True,
+        "uxlc_note": row.get("uxlc_notes") or "",
+    }
+    word.setdefault("alternatives", []).append(alt)
 
 
 def _main(verse: dict) -> list[dict]:
@@ -104,7 +200,9 @@ def _merge(a: dict, b: dict, text: str, row: dict) -> dict:
             "verdict": row.get("verdict") or "",
             "ids": [a["id"], b["id"]],
         },
+        "review_class": "word_division",
     }
+    word["morphemes_src"] = list(a.get("morphemes_src") or a.get("morphemes") or []) + list(b.get("morphemes_src") or b.get("morphemes") or [])
     word["consonants"] = consonants(word["surface"])
     word["pointed"] = pointed(word["surface"])
     for qere in word["qere_words"]:
@@ -120,7 +218,10 @@ def _split(word: dict, left: str, right: str, row: dict) -> tuple[dict, dict]:
     first["surface"] = canon(_strip(left))
     first["trailers"] = [" "]
     first["trailer"] = " "
-    first["morphemes"] = list(word.get("morphemes") or [])
+    left_parts, right_parts = _cut_parts(list(word.get("morphemes_src") or word.get("morphemes") or []), cut)
+    first["morphemes_src"] = left_parts
+    first["morphemes"] = list(left_parts)
+    first["review_class"] = "word_division"
     first["special"] = list(word.get("special") or [])
     first["alternatives"] = list(word.get("alternatives") or [])
     first["qere_words"] = list(word.get("qere_words") or [])
@@ -132,7 +233,9 @@ def _split(word: dict, left: str, right: str, row: dict) -> tuple[dict, dict]:
     second["surface"] = canon(_strip(right))
     second["trailers"] = list(word.get("trailers") or [])
     second["trailer"] = word.get("trailer") or ""
-    second["morphemes"] = []
+    second["morphemes_src"] = right_parts
+    second["morphemes"] = list(right_parts)
+    second["review_class"] = "word_division"
     second["lemma"] = ""
     second["morph_oshb"] = ""
     second["special"] = []
@@ -164,16 +267,18 @@ def _reshape(verse: dict, theirs: list[dict], row: dict, how: str) -> None:
     if ops is None:
         raise SystemExit(f"cannot align {verse['ref']}")
     if how == "join":
-        if "documented override" in row["recommended_action"]:
-            for op, at, ux in ops:
-                if op == "merge":
+        for op, at, ux in ops:
+            if op == "merge":
+                if "documented override" in row["recommended_action"]:
                     _paint_span([words[at], words[at + 1]], theirs[ux]["text"], row)
+                for item in (words[at], words[at + 1]):
+                    item["review_class"] = item.get("review_class") or "exegesis_join"
         return
     new: list[dict] = []
     for op, at, ux in ops:
         if op == "keep":
-            if canon(_strip(theirs[ux]["text"])) != words[at]["surface"]:
-                _paint(words[at], theirs[ux]["text"], row)
+            # A word the division row does not cover keeps its own reading. Its UXLC
+            # difference (if any) was never triaged, so it stays visible in uxlc-diff.
             new.append(words[at])
         elif op == "merge":
             if words[at].get("kq_role") == "ketiv" or words[at + 1].get("kq_role") == "ketiv":
@@ -200,21 +305,30 @@ def apply_review(books: list[dict], csv_path: Path, uxlc_zip: Path) -> None:
                 by_id[word["id"]] = word
     touched: set[str] = set()
     for row in rows:
-        if decision(row["recommended_action"]) != "override":
+        how = row_decision(row)
+        if how not in ("override", "uncertain", "optional") or not row.get("word_id"):
             continue
         word = by_id.get(row["word_id"])
         if word is None or not row.get("uxlc"):
             raise SystemExit(f"override missing word {row['ref']} {row['word_id']}")
-        _paint(word, row["uxlc"], row)
-        touched.add(row["ref"])
-    divide_rows = [row for row in rows if decision(row["recommended_action"]) in ("divide", "join")]
+        if how == "override":
+            _paint(word, row["uxlc"], row)
+            touched.add(row["ref"])
+        else:
+            _alternative(word, row, how)
+    divide_rows = [row for row in rows if row_decision(row) in ("divide", "join")]
     if divide_rows:
         uxlc = load_uxlc(uxlc_zip)
         for row in divide_rows:
             verse = by_ref[row["ref"]]
             osis = row["ref"].split(".")[0]
             theirs = [word for word in uxlc[osis][row["ref"]] if word["role"] != "qere"]
-            _reshape(verse, theirs, row, decision(row["recommended_action"]))
+            _reshape(verse, theirs, row, row_decision(row))
             touched.add(row["ref"])
     for ref in touched:
         rebuild_verse(by_ref[ref])
+    for ref in touched:
+        for word in by_ref[ref]["words"]:
+            if word.get("review_class"):
+                resegment(word)
+            word.pop("morphemes_src", None)

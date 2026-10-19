@@ -31,12 +31,25 @@ def _nuclei(surface: str) -> list[int]:
     owned: set[int] = set()
     skip: set[int] = set()
     for index in range(len(groups) - 1):
-        _letter, marks = groups[index]
+        letter, marks = groups[index]
         if _marks(marks) & FULL:
             continue
         next_letter, next_marks = groups[index + 1]
         if _vowel_letter_vav(next_letter, _marks(next_marks)):
-            owned.add(index)
+            owner = index
+            # A quiescent aleph (no vowel, no shewa) after a letter with no vowel of its own:
+            # the וּ / וֹ belongs to that letter (יְר֣אוּ is two syllables, not three).
+            if letter == "א" and not (_marks(marks) & (FULL | SHEVA)) and index > 0:
+                prev = _marks(groups[index - 1][1])
+                prev_letter = groups[index - 1][0]
+                if (
+                    prev_letter not in "יו"
+                    and not (prev & (FULL | SHEVA))
+                    and (index - 1) not in owned
+                    and (index - 1) not in skip
+                ):
+                    owner = index - 1
+            owned.add(owner)
             skip.add(index + 1)
     found: list[int] = []
     for index, (letter, marks) in enumerate(groups):
@@ -85,6 +98,47 @@ def _prepositive_blocks(accents: list[dict], index: int) -> bool:
         row.get("placement") == "pre" and row.get("letter_index") == index and row.get("name") != "yetiv"
         for row in accents
     )
+
+
+SEGOL = 0x05B6
+TSERE = 0x05B5
+QAMATS = 0x05B8
+GUTTURALS = set("אהחע")
+
+
+def _segolate_penult(surface: str, nuclei: list[int]) -> int | None:
+    """A segolate noun (אֶבֶן, פֶּתַח, שַׁחַת) keeps the tone on the penult.
+
+    Used only when a prepositive accent hides the tone. The last syllable must be
+    closed by a consonant (not ה or י), carry segol (or patach after segol / a guttural)
+    with no dagesh, and not be a -כֶם/-הֶם suffix.
+    """
+    groups = clusters(surface)
+    if len(nuclei) < 2:
+        return None
+    last, penult = nuclei[-1], nuclei[-2]
+    if last != len(groups) - 2 or penult != last - 1:
+        return None
+    final_letter, final_marks = groups[-1]
+    if _marks(final_marks) & FULL:
+        return None
+    letter, marks = groups[last]
+    cps = _marks(marks)
+    pcps = _marks(groups[penult][1])
+    if DAGESH in cps:
+        return None  # dagesh after a vowel is forte: אַתֶּם, not a segolate
+    if final_letter in "הי":
+        return None  # שָׂדֶה, אַחַי: the tone is on the ultima
+    if letter in "כה" and final_letter in "םן":
+        return None
+    if SEGOL in cps:
+        ok = bool(pcps & {SEGOL, TSERE, HOLAM, QAMATS, PATAH})
+    elif PATAH in cps:
+        # patach-patach needs a guttural (נַעַר, יַחַד). Not with aleph: אַחַת, הַאַף keep the ultima.
+        ok = SEGOL in pcps or (PATAH in pcps and letter in GUTTURALS and "א" not in (letter, groups[penult][0]))
+    else:
+        ok = False
+    return penult if ok else None
 
 
 def _prefer_tone(surface: str, index: int, accents: list[dict]) -> int:
@@ -160,6 +214,10 @@ def stress_for(surface: str, accents: list[dict], meteg: list[dict], proclitic: 
     if plain:
         return _pack(surface, plain["letter_index"], accents, "meteg")
     nuclei = _nuclei(surface)
+    if main and main.get("placement") == "pre" and main.get("name") != "yetiv":
+        seg = _segolate_penult(surface, nuclei)
+        if seg is not None:
+            return {"letter_index": seg, "syll_from_end": syll_from_end(surface, seg), "source": "segolate"}
     index = nuclei[-1] if nuclei else last_letter
     return _pack(surface, index, accents, "default-ultima")
 
