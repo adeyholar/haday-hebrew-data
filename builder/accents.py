@@ -29,7 +29,8 @@ PROSE: dict[int, tuple[str, str, int | str, str]] = {
     0x05A7: ("darga", "C", "C", "imp"),
     0x05A8: ("qadma", "C", "C", "imp"),
     0x05A9: ("telisha_qetana", "C", "C", "post"),
-    0x05AA: ("galgal", "C", "C", "imp"),
+    # OSHB writes the prose atnach hafukh as U+05AA. UXLC writes U+05A2. Same mark. It stays conjunctive.
+    0x05AA: ("atnach_hafukh", "C", "C", "imp"),
     0x05AB: ("ole", "D", 0, "imp"),
     0x05AC: ("illuy", "C", "C", "imp"),
     0x05AD: ("dechi", "D", 2, "pre"),
@@ -45,6 +46,7 @@ POETIC: dict[int, tuple[str, str, int | str, str]] = {
     0x059C: ("geresh", "D", 3, "imp"),
     0x059D: ("geresh_muqdam", "D", 3, "pre"),
     0x05A1: ("pazer", "D", 2, "imp"),
+    0x05A2: ("atnach_hafukh", "D", 3, "imp"),
     0x05A3: ("munach", "C", "C", "imp"),
     0x05A4: ("mehuppakh", "C", "C", "imp"),
     0x05A5: ("merkha", "C", "C", "imp"),
@@ -235,7 +237,11 @@ def classify_word(system: str, surface: str, trailer: str, is_last_unit: bool, v
         row["role"] = "secondary"
     disj = [row for row in rows if row["kind"] == "D"]
     if disj:
-        best = min(disj, key=lambda row: (row["level"] if isinstance(row["level"], int) else 9, row["letter_index"]))
+        silluq_rows = [row for row in disj if row["name"] == "silluq"]
+        if is_last_unit and verse_has_sof and silluq_rows:
+            best = silluq_rows[-1]
+        else:
+            best = min(disj, key=lambda row: (row["level"] if isinstance(row["level"], int) else 9, row["letter_index"]))
         best["role"] = "main"
         main = best
     elif rows:

@@ -6,7 +6,7 @@ Living picture of **what this dataset is today**. Not the class site. Not a wish
 |---|---|
 | **Snapshot** | 18 October 2026, after the Dev Desk review of v1.0.0 |
 | **Repo** | https://github.com/adeyholar/haday-hebrew-data (`main`). Dataset version **1.1.0**. |
-| **Release** | v1.0.0 was the first cut. v1.1.0 was the first review fix. v1.1.1 is the poetic rhythm, stress, and trailer fix. The class site is still not wired to it. |
+| **Release** | v1.0.0 was the first cut. v1.1.0 was the first review fix. v1.1.1 is the poetic rhythm, stress, and trailer fix. v1.1.2 applies the signed UXLC triage. The Reading Lab on the class site reads the chapter JSON from this build. |
 | **Spec** | https://app.notion.com/p/3fd058f607b1816e8bcbde360c1a546d |
 | **Class site** | Not wired. https://hebrewmentor.haday.app still reads `public/tanakh/books/*.json`, which drops the accents. |
 | **BHSA** | Off. Do not turn it on without the license note in the spec. |
@@ -116,7 +116,7 @@ Holam male (וֹ) and shureq (וּ) belong to the consonant before the vav. או
 
 `build-report/legarmeh.csv` lists every munach, and in poetry every mehuppakh or azla, that is followed by paseq.
 
-`build-report/uxlc-diff.csv` from v1.1.0 is the triage file. UXLC `<x>` markers are not part of the word. Doubled pashta and UXLC’s CGJ are normalized for the comparison only, and OSHB is not changed. The report is about 1,171 rows: about 1,139 mark differences, 26 tokenization differences, and 6 letter differences. The letter rows include 2 Samuel 13:37, 2 Samuel 14:7, Ezekiel 16:36, Amos 7:2, and 2 Chronicles 27:4. Dev Desk has not signed this list off.
+`build-report/uxlc-diff.csv` is what the signed triage did not change. v1.1.2 applies `sources/uxlc-triage-v1.1.1.csv`. Where the review says UXLC is right, including an uncertain note or the diplomatic layer, `surface` is that reading and `surface_src` stays the OSHB characters. A word division follows L, so two words become one or one becomes two. An exegesis split keeps both words and drops the space the builder used to insert. Galgal U+05AA in prose is named atnach hafukh. It stays conjunctive. U+05AA and U+05A2 compare as the same mark. A double accentuation stays on `word_alt` and is not a diff. Rows marked none or document are not changed. The diff report should be 43 rows. Do not overwrite `surface_src` to hide the OSHB pin.
 
 `build-report/accent-unknown.csv` is empty.
 
@@ -133,7 +133,7 @@ Do not replace the Tanakh JSON in the app by copying `surface` over the old file
 - Do not strip a mark to store the text.
 - Do not run Unicode NFC or NFD on these strings.
 - Do not build from the BHS scan, its OCR, or the BHS apparatus.
-- Do not overwrite an OSHB word because UXLC differs. A correction is a patch file with a reason.
+- Do not overwrite `surface_src`. A correction changes `surface` and records the review row. The OSHB characters stay the pin.
 - Do not merge BHSA into this public file. Its license is not cleared.
 - Do not point the live Tanakh player at this dataset until the flagged Genesis 1–3 reader has been reviewed.
 
@@ -146,7 +146,8 @@ Do not replace the Tanakh JSON in the app by copying `surface` over the old file
 | `builder/rhythm.py` | Pause tree and the `0` / `1` / `2` paths. |
 | `builder/stress.py` | Which consonant is stressed, and `syll_from_end`. |
 | `builder/oshb.py` | OSIS reader, ketiv/qere, units, maqaf chains. |
-| `builder/uxlc.py` | Verse and word alignment. Report only. |
+| `builder/uxlc.py` | Verse and word alignment. Report only. Comparison treats U+05AA as U+05A2, and a `word_alt` row as already stored. |
+| `builder/overrides.py` | Applies `sources/uxlc-triage-v1.1.1.csv` onto `surface`. |
 | `builder/build.py` | SQLite, chapter JSON, manifest, reports. |
 | `builder/books.py` | The 39 books in Tanakh order, and which Job verses are prose. |
 | `tests/test_accept.py` | Genesis 1:1, the five stress words, the word counts, Genesis rhythm ≥ 98%. |

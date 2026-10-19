@@ -16,7 +16,7 @@ from builder.books import BOOKS
 from builder.oshb import load_oshb
 from builder.uxlc import compare, load_uxlc
 
-VERSION = "1.1.1"
+VERSION = "1.1.2"
 OSHB_COMMIT = "3d15126fb1ef74867fc1434be1942e837932691f"
 UXLC_SHA = "423469bdcc4bfe36d7666f8e76fbd02c1674d77469093c06cee9779c0fba83e3"
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,7 +43,7 @@ def _accent_out(row: dict) -> dict:
 
 
 def _json_ready(word: dict) -> dict:
-    return {
+    ready = {
         "id": word["id"],
         "pos": word["pos"],
         "unit": word.get("unit"),
@@ -67,6 +67,9 @@ def _json_ready(word: dict) -> dict:
         "rhythm_path": word.get("rhythm_path"),
         "silluq_inferred": bool(word.get("silluq_inferred")),
     }
+    if word.get("override"):
+        ready["review"] = word["override"].get("action") or ""
+    return ready
 
 
 def _accent_rows() -> list[dict]:

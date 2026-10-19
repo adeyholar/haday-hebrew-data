@@ -59,13 +59,15 @@ class Accept(unittest.TestCase):
         qere = [word for word in words if word.get("kq_role") == "qere"]
         self.assertEqual(len(self.books), 39)
         self.assertEqual(len(verses), 23213)
-        self.assertEqual(len(main), 305507)
+        self.assertEqual(len(main), 305500)
         self.assertEqual(len(qere), 1278)
         self.assertEqual(sum(1 for verse in verses if verse["has_sof_pasuq"]), 23192)
         self.assertEqual(len({word["id"] for word in words}), len(words))
         for word in words:
-            self.assertEqual(multiset(word["surface"]), multiset(word["surface_src"]))
             self.assertEqual(canon(word["surface"]), word["surface"])
+            if word.get("override"):
+                continue
+            self.assertEqual(multiset(word["surface"]), multiset(word["surface_src"]))
 
     def test_prose_rhythm_on_genesis(self):
         ok = n = 0
@@ -140,7 +142,7 @@ class Accept(unittest.TestCase):
         words = [word for book in self.books for verse in book["verses"] for word in verse["words"]]
         main = [word for word in words if word.get("kq_role") != "qere"]
         qere = [word for word in words if word.get("kq_role") == "qere"]
-        self.assertEqual(sum(word["trailer"].count(MAQAF) for word in main), 42570)
+        self.assertEqual(sum(word["trailer"].count(MAQAF) for word in main), 42568)
         self.assertEqual(sum(word["trailer"].count(MAQAF) for word in qere), 7)
         self.assertEqual(sum(word["trailer"].count(PASEQ) for word in main), 2273)
         self.assertEqual(sum(word["trailer"].count(PASEQ) for word in qere), 5)
@@ -239,6 +241,27 @@ class Accept(unittest.TestCase):
         self.assertEqual(len(ketiv["qere_words"]), 1)
         self.assertTrue(ketiv["qere_words"][0]["surface"])
         self.assertTrue(ketiv["qere_words"][0].get("accents") or ketiv["qere_words"][0].get("stress"))
+
+    def test_signed_uxlc_review_is_on_the_reading(self):
+        verses = {verse["ref"]: verse for book in self.books for verse in book["verses"]}
+        deshe = next(word for word in verses["Gen.1.11"]["words"] if word["id"] == "01fPi")
+        self.assertEqual(deshe["surface"], "דֶּ֗שֶׁא")
+        self.assertEqual(deshe["main_accent"], "revia")
+        avi = next(word for word in verses["Isa.9.5"]["words"] if word["consonants"] == "אבי")
+        self.assertEqual(avi["trailer"], "")
+        self.assertNotIn("אבי ", verses["Isa.9.5"]["text"])
+        self.assertIn("ויחראף", [word["consonants"] for word in verses["Num.12.9"]["words"]])
+        named = False
+        for book in self.books:
+            for verse in book["verses"]:
+                if verse["system"] == "poetic":
+                    continue
+                for word in verse["words"]:
+                    for row in word.get("accents") or []:
+                        if row.get("cp") == "U+05AA":
+                            self.assertEqual(row["name"], "atnach_hafukh", word["id"])
+                            named = True
+        self.assertTrue(named)
 
     def test_normalization_vectors(self):
         vectors = json.loads((ROOT / "tests" / "normalization-vectors.json").read_text(encoding="utf-8"))
