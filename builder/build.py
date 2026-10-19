@@ -14,9 +14,10 @@ from pathlib import Path
 from builder.accents import HEBREW, POETIC, PROSE
 from builder.books import BOOKS
 from builder.oshb import load_oshb
+from builder.sources import verify_sources
 from builder.uxlc import compare, load_uxlc
 
-VERSION = "1.1.2"
+VERSION = "1.1.3"
 OSHB_COMMIT = "3d15126fb1ef74867fc1434be1942e837932691f"
 UXLC_SHA = "423469bdcc4bfe36d7666f8e76fbd02c1674d77469093c06cee9779c0fba83e3"
 ROOT = Path(__file__).resolve().parents[1]
@@ -103,6 +104,7 @@ def _accent_rows() -> list[dict]:
 
 
 def build(out: Path) -> dict:
+    verify_sources()
     out.mkdir(parents=True, exist_ok=True)
     report = out / "build-report"
     report.mkdir(exist_ok=True)
