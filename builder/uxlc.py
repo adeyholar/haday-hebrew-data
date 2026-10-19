@@ -1,11 +1,12 @@
 """Cross-check OSHB words against the pinned UXLC. OSHB is not overwritten."""
 
+import csv
 import zipfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from builder.books import BOOKS
-from builder.canon import MAQAF, PASEQ, SOF, canon, consonants
+from builder.canon import ACCENTS, MAQAF, PASEQ, SOF, canon, consonants
 
 TRAIL = (MAQAF, PASEQ, SOF, " ")
 CGJ = "\u034F"
@@ -47,6 +48,8 @@ def compare_form(text: str) -> str:
     UXLC inserts CGJ. OSHB writes a doubled pashta as qadma + pashta; UXLC writes two pashtas.
     """
     text = text.replace(CGJ, "").replace("\u200d", "").replace("\u200c", "")
+    # OSHB prose atnach hafukh is U+05AA. UXLC writes U+05A2. Comparison only.
+    text = text.replace("\u05AA", "\u05A2")
     if PASHTA in text and QADMA in text:
         text = text.replace(QADMA, PASHTA)
     return canon(text)
@@ -80,8 +83,63 @@ def load_uxlc(zip_path: Path) -> dict[str, dict[str, list[dict]]]:
     return books
 
 
-def _pair(ref: str, ours: list[dict], theirs: list[dict], label: str) -> tuple[list[dict], bool]:
+def _bags(text: str) -> tuple[str, dict[str, int], dict[str, int]]:
+    text = compare_form(text).replace("/", "")
+    letters = consonants(text)
+    accents: dict[str, int] = {}
+    other: dict[str, int] = {}
+    for ch in text:
+        if 0x05D0 <= ord(ch) <= 0x05EA:
+            continue
+        bag = accents if ord(ch) in ACCENTS else other
+        bag[ch] = bag.get(ch, 0) + 1
+    return letters, accents, other
+
+
+def _alt_covers(word: dict, uxlc_text: str) -> bool:
+    """UXLC sometimes stacks both accent systems. OSHB keeps the second on word_alt."""
+    letters, ux_acc, ux_other = _bags(uxlc_text)
+    src_letters, src_acc, src_other = _bags(word.get("surface") or word.get("surface_src") or "")
+    if letters != src_letters or ux_other != src_other:
+        return False
+    have = dict(src_acc)
+    for alt in word.get("alternatives") or []:
+        if alt.get("note_type") != "alternative":
+            continue
+        _letters, acc, _other = _bags(alt.get("rdg") or "")
+        for ch, n in acc.items():
+            have[ch] = have.get(ch, 0) + n
+    return have == ux_acc
+
+
+def _joined(words: list[dict]) -> list[dict]:
+    """An exegesis split has an empty trailer. Compare it as the one written word."""
+    out: list[dict] = []
+    pending: dict | None = None
+    for word in words:
+        if pending is None:
+            pending = word
+            continue
+        if not pending.get("_join_next"):
+            out.append(pending)
+            pending = word
+            continue
+        pending = {
+            "id": pending["id"],
+            "surface_src": pending["surface_src"] + word["surface_src"],
+            "surface": pending["surface"] + word["surface"],
+            "consonants": pending["consonants"] + word["consonants"],
+            "trailer": word.get("trailer") or "",
+            "alternatives": (pending.get("alternatives") or []) + (word.get("alternatives") or []),
+        }
+    if pending is not None:
+        out.append(pending)
+    return out
+
+
+def _pair(ref: str, ours: list[dict], theirs: list[dict], label: str, explained: set[tuple[str, str]]) -> tuple[list[dict], bool]:
     diffs: list[dict] = []
+    ours = _joined(ours)
     if len(ours) != len(theirs):
         diffs.append(
             {
@@ -94,25 +152,28 @@ def _pair(ref: str, ours: list[dict], theirs: list[dict], label: str) -> tuple[l
             }
         )
         for word in ours:
-            word["uxlc"] = "unaligned"
+            if "uxlc" in word:
+                word["uxlc"] = "unaligned"
         return diffs, True
     verse_diff = False
     for ours_word, their_word in zip(ours, theirs):
         left_letters = ours_word["consonants"]
         right_letters = consonants(their_word["text"])
-        left = compare_form(ours_word["surface_src"])
+        left = compare_form(ours_word.get("surface") or ours_word.get("surface_src") or "")
         right = compare_form(their_word["text"])
-        if left == right and left_letters == right_letters:
-            ours_word["uxlc"] = "match"
+        if (ref, ours_word.get("id") or "") in explained or (left == right and left_letters == right_letters) or _alt_covers(ours_word, their_word["text"]):
+            if "id" in ours_word:
+                ours_word["uxlc"] = "match"
             continue
         verse_diff = True
-        ours_word["uxlc"] = "diff"
+        if "id" in ours_word:
+            ours_word["uxlc"] = "diff"
         kind = "letters" if left_letters != right_letters else "marks"
         diffs.append(
             {
                 "ref": ref,
-                "word_id": ours_word["id"],
-                "oshb": ours_word["surface_src"],
+                "word_id": ours_word.get("id") or "",
+                "oshb": ours_word.get("surface") or "",
                 "uxlc": their_word["text"],
                 "diff_type": kind,
                 "codepoints": [left, right],
@@ -121,7 +182,23 @@ def _pair(ref: str, ours: list[dict], theirs: list[dict], label: str) -> tuple[l
     return diffs, verse_diff
 
 
+def _explained(root: Path | None = None) -> set[tuple[str, str]]:
+    """Word ids the signed review says are the same mark, or already stored on word_alt."""
+    from builder.overrides import decision
+
+    path = root or Path(__file__).resolve().parents[1] / "sources" / "uxlc-triage-v1.1.1.csv"
+    if not path.exists():
+        return set()
+    found: set[tuple[str, str]] = set()
+    with path.open(encoding="utf-8", newline="") as handle:
+        for row in csv.DictReader(handle):
+            if decision(row["recommended_action"]) == "compare" and row.get("word_id"):
+                found.add((row["ref"], row["word_id"]))
+    return found
+
+
 def compare(oshb_books: list[dict], uxlc: dict[str, dict[str, list[dict]]]) -> list[dict]:
+    explained = _explained()
     diffs: list[dict] = []
     seen: set[str] = set()
     for book in oshb_books:
@@ -137,8 +214,8 @@ def compare(oshb_books: list[dict], uxlc: dict[str, dict[str, list[dict]]]) -> l
             ours_q = [word for word in verse["words"] if word.get("kq_role") == "qere"]
             theirs_main = [word for word in theirs[ref] if word["role"] != "qere"]
             theirs_q = [word for word in theirs[ref] if word["role"] == "qere"]
-            main_diffs, main_bad = _pair(ref, ours, theirs_main, "main")
-            qere_diffs, qere_bad = _pair(ref, ours_q, theirs_q, "qere")
+            main_diffs, main_bad = _pair(ref, ours, theirs_main, "main", explained)
+            qere_diffs, qere_bad = _pair(ref, ours_q, theirs_q, "qere", explained)
             diffs.extend(main_diffs)
             diffs.extend(qere_diffs)
             verse["uxlc_status"] = "diff" if main_bad or qere_bad else "match"

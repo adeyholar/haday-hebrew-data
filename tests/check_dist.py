@@ -9,16 +9,16 @@ from pathlib import Path
 def main(out: Path) -> None:
     db = sqlite3.connect(out / "hebrew-bible.sqlite")
     version = db.execute("select value from meta where key = 'dataset_version'").fetchone()[0]
-    if version != "1.1.1":
+    if version != "1.1.2":
         raise SystemExit(f"dataset_version {version}")
     verses = db.execute("select count(*) from verse").fetchone()[0]
     words = db.execute("select count(*) from word").fetchone()[0]
     qere = db.execute("select count(*) from word where kq_role = 'qere'").fetchone()[0]
     no_sof = json.loads((out / "build-report" / "no-sof-pasuq.json").read_text(encoding="utf-8"))
     diffs = db.execute("select count(*) from uxlc_diff").fetchone()[0]
-    if verses != 23213 or words != 306785 or qere != 1278:
+    if verses != 23213 or words != 306778 or qere != 1278:
         raise SystemExit(f"counts verses={verses} words={words} qere={qere}")
-    if len(no_sof) != 21 or diffs != 1171:
+    if len(no_sof) != 21 or diffs != 43:
         raise SystemExit(f"no_sof={len(no_sof)} uxlc={diffs}")
     chapter = json.loads((out / "json" / "Gen" / "1.json").read_text(encoding="utf-8"))
     for verse in chapter["verses"]:

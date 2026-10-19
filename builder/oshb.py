@@ -184,11 +184,14 @@ def parse_book(path: Path, osis: str) -> list[dict]:
                         main[-1]["alternatives"].append(alt)
                     else:
                         verse_alts.append(alt)
+                    note_text = "".join(child.itertext())
+                    if child.get("type") == "exegesis" and "divided for exegesis" in note_text and len(main) >= 2 and not main[-2]["trailers"]:
+                        main[-2]["_join_next"] = True
             if verse_alts and main:
                 main[0]["alternatives"] = verse_alts + main[0]["alternatives"]
                 verse_alts = []
             for index, word in enumerate(main):
-                if not word["trailers"] and index < len(main) - 1:
+                if not word["trailers"] and index < len(main) - 1 and not word.get("_join_next"):
                     _append_trailer(word, " ")
                 word["trailer"] = "".join(word["trailers"])
             for word in stream:
@@ -319,10 +322,65 @@ def _analyze(reading: list[dict], system: str, has_sof: bool) -> None:
         word["silluq_inferred"] = info["silluq_inferred"]
         proclitic = MAQAF in word["trailer"] or bool(word.get("_reading_maqaf"))
         word["stress"] = stress_for(word["surface"], word["accents"], word["meteg"], proclitic)
-        if multiset(word["surface"]) != multiset(word["surface_src"]):
-            raise SystemExit(f"mark mismatch {word['id']}")
-        if canon(word["surface"]) != word["surface"]:
-            raise SystemExit(f"canon not stable {word['id']}")
+        if word.get("override"):
+            if canon(word["surface"]) != word["surface"]:
+                raise SystemExit(f"canon not stable {word['id']}")
+        else:
+            if multiset(word["surface"]) != multiset(word["surface_src"]):
+                raise SystemExit(f"mark mismatch {word['id']}")
+            if canon(word["surface"]) != word["surface"]:
+                raise SystemExit(f"canon not stable {word['id']}")
+
+
+def rebuild_verse(verse: dict) -> None:
+    """Recompute accents, stress, and the pause tree after a review patch."""
+    main = [word for word in verse["words"] if word.get("kq_role") != "qere"]
+    for index, word in enumerate(main, start=1):
+        word["pos"] = index
+        for qere in word.get("qere_words") or []:
+            qere["pos"] = index
+    stream: list[dict] = []
+    for word in main:
+        if word.get("kq_role") == "ketiv" and word.get("qere_words"):
+            stream.extend(word["qere_words"])
+        else:
+            stream.append(word)
+    has_sof = bool(verse["has_sof_pasuq"])
+    for word in stream:
+        word["surface"] = canon(word["surface"])
+        word["consonants"] = consonants(word["surface"])
+        word["pointed"] = pointed(word["surface"])
+        _blank(word)
+    _analyze(stream, verse["system"], has_sof)
+    for word in main:
+        if word in stream or not word.get("override"):
+            continue
+        word["surface"] = canon(word["surface"])
+        word["consonants"] = consonants(word["surface"])
+        word["pointed"] = pointed(word["surface"])
+        _blank(word)
+        info = classify_word(verse["system"], word["surface"], word["trailer"], word is main[-1], has_sof)
+        word["accents"] = info["accents"]
+        word["meteg"] = info["meteg"]
+        word["main_accent"] = info["main_accent"]
+        word["level"] = info["level"]
+        word["unknown_accents"] = info["unknown"]
+        word["silluq_inferred"] = info["silluq_inferred"]
+        word["stress"] = stress_for(word["surface"], word["accents"], word["meteg"], MAQAF in word["trailer"])
+    verse["text_src"] = "".join(word["surface_src"] + word["trailer"] for word in main)
+    verse["text"] = "".join(word["surface"] + word["trailer"] for word in main)
+    if has_sof and not verse["text_src"].endswith(SOF):
+        verse["text_src"] += SOF
+        verse["text"] += SOF
+    verse["word_count"] = len(main)
+    units = _units(stream, verse["system"])
+    verse["unit_count"] = len(units)
+    verse["rhythm"] = build_tree(units)
+    words: list[dict] = []
+    for word in main:
+        words.append(word)
+        words.extend(word.get("qere_words") or [])
+    verse["words"] = words
 
 
 def load_oshb(root: Path) -> list[dict]:
@@ -330,4 +388,7 @@ def load_oshb(root: Path) -> list[dict]:
     for osis, _en, _he, _section, _uxlc, _system in BOOKS:
         path = root / f"{osis}.xml"
         books.append({"osis": osis, "verses": parse_book(path, osis)})
+    from builder.overrides import apply_review
+
+    apply_review(books, root.parent / "uxlc-triage-v1.1.1.csv", root.parent / "Tanach.xml.zip")
     return books
