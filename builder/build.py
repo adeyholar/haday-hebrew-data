@@ -42,6 +42,14 @@ def _accent_out(row: dict) -> dict:
     return {key: value for key, value in row.items() if key != "name_he"}
 
 
+def _review(word: dict) -> str | None:
+    if word.get("override"):
+        return word["override"].get("action") or None
+    if word.get("review_class"):
+        return "join"
+    return None
+
+
 def _json_ready(word: dict) -> dict:
     ready = {
         "id": word["id"],
@@ -69,6 +77,9 @@ def _json_ready(word: dict) -> dict:
     }
     if word.get("override"):
         ready["review"] = word["override"].get("action") or ""
+    if word.get("review_class"):
+        ready.setdefault("review", "join")
+        ready["review_class"] = word["review_class"]
     return ready
 
 
@@ -108,8 +119,8 @@ def build(out: Path) -> dict:
         create table meta (key text primary key, value text);
         create table book (osis text primary key, ord integer, name_en text, name_he text, section text, uxlc_file text, default_system text);
         create table verse (ref text primary key, book text, chapter integer, verse integer, system text, text_src text, text text, word_count integer, unit_count integer, para_after text, has_sof_pasuq integer, rhythm text, uxlc_status text);
-        create table word (id text primary key, ref text, pos integer, unit integer, surface_src text, surface text, morphemes text, trailer text, consonants text, pointed text, accents text, main_accent text, meteg text, stress text, kq_role text, kq_group text, special text, lemma text, morph_oshb text, oshb_n text, rhythm_path text, rhythm_path_computed text, uxlc text);
-        create table word_alt (ref text, host_id text, note_type text, rdg text);
+        create table word (id text primary key, ref text, pos integer, unit integer, surface_src text, surface text, morphemes text, trailer text, consonants text, pointed text, accents text, main_accent text, meteg text, stress text, kq_role text, kq_group text, special text, lemma text, morph_oshb text, oshb_n text, rhythm_path text, rhythm_path_computed text, uxlc text, review text, review_class text);
+        create table word_alt (ref text, host_id text, note_type text, rdg text, review_class text, uncertain integer, opt_in integer);
         create table unit (ref text, unit integer, level text, accent text);
         create table accent (word_id text, ord integer, cp text, name text, role text, kind text, level text, letter_index integer, compound text);
         create table uxlc_diff (ref text, word_id text, oshb text, uxlc text, diff_type text, codepoints text);
@@ -197,7 +208,7 @@ def build(out: Path) -> dict:
                 ),
             )
             db.executemany(
-                "insert into word values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "insert into word values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     (
                         word["id"],
@@ -223,13 +234,27 @@ def build(out: Path) -> dict:
                         word.get("rhythm_path"),
                         word.get("rhythm_path_computed"),
                         word.get("uxlc"),
+                        _review(word),
+                        word.get("review_class"),
                     )
                     for word in verse["words"]
                 ],
             )
             db.executemany(
-                "insert into word_alt values (?, ?, ?, ?)",
-                [(verse["ref"], word["id"], alt["note_type"], alt["rdg"]) for word in verse["words"] for alt in word.get("alternatives") or []],
+                "insert into word_alt values (?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (
+                        verse["ref"],
+                        word["id"],
+                        alt["note_type"],
+                        alt["rdg"],
+                        alt.get("review_class"),
+                        int(bool(alt.get("uncertain"))),
+                        int(bool(alt.get("opt_in"))),
+                    )
+                    for word in verse["words"]
+                    for alt in word.get("alternatives") or []
+                ],
             )
             db.executemany(
                 "insert into unit values (?, ?, ?, ?)",

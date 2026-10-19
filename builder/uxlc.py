@@ -184,7 +184,7 @@ def _pair(ref: str, ours: list[dict], theirs: list[dict], label: str, explained:
 
 def _explained(root: Path | None = None) -> set[tuple[str, str]]:
     """Word ids the signed review says are the same mark, or already stored on word_alt."""
-    from builder.overrides import decision
+    from builder.overrides import row_decision
 
     path = root or Path(__file__).resolve().parents[1] / "sources" / "uxlc-triage-v1.1.1.csv"
     if not path.exists():
@@ -192,7 +192,8 @@ def _explained(root: Path | None = None) -> set[tuple[str, str]]:
     found: set[tuple[str, str]] = set()
     with path.open(encoding="utf-8", newline="") as handle:
         for row in csv.DictReader(handle):
-            if decision(row["recommended_action"]) == "compare" and row.get("word_id"):
+            # compare rows are the same mark; uncertain and optional rows are kept on word_alt.
+            if row_decision(row) in ("compare", "uncertain", "optional") and row.get("word_id"):
                 found.add((row["ref"], row["word_id"]))
     return found
 

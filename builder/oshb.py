@@ -37,11 +37,15 @@ def _word_from(el: ET.Element) -> dict:
         special.append("upper_dot")
     if "\u05C5" in surface_src:
         special.append("lower_dot")
+    # Morphemes carry the same canonical mark order as the surface, so they join back to it.
+    morphemes = [canon(part) for part in parts]
+    if "".join(morphemes) != surface:
+        morphemes = [surface]
     return {
         "id": el.get("id") or "",
         "surface_src": surface_src,
         "surface": surface,
-        "morphemes": parts,
+        "morphemes": morphemes,
         "trailers": [],
         "trailer": "",
         "consonants": consonants(surface),
@@ -367,10 +371,9 @@ def rebuild_verse(verse: dict) -> None:
         word["unknown_accents"] = info["unknown"]
         word["silluq_inferred"] = info["silluq_inferred"]
         word["stress"] = stress_for(word["surface"], word["accents"], word["meteg"], MAQAF in word["trailer"])
-    verse["text_src"] = "".join(word["surface_src"] + word["trailer"] for word in main)
+    # text_src is never rebuilt here: it stays the OSHB source, including OSHB's word division.
     verse["text"] = "".join(word["surface"] + word["trailer"] for word in main)
-    if has_sof and not verse["text_src"].endswith(SOF):
-        verse["text_src"] += SOF
+    if has_sof and not verse["text"].endswith(SOF):
         verse["text"] += SOF
     verse["word_count"] = len(main)
     units = _units(stream, verse["system"])
